@@ -1,0 +1,1085 @@
+---
+title: "Study1"
+author: "Lisi Wang"
+date: "5/11/2020"
+output: html_document
+---
+
+```{r set up}
+#install.packages("aod")
+#install.packages("car")
+#install.packages("foreign")
+#install.packages("ggpubr")
+#install.packages("Gifi")
+#install.packages("GPArotation")
+#install.packages("lavaan")
+#install.packages("nFactors")
+#install.packages("olsrr")
+#install.packages("PerformanceAnalytics")
+#install.packages("psych")
+#install.packages("rstatix")
+#install.packages("tidyverse")
+library(aod)
+library(car)
+library(foreign)
+library(ggpubr)
+library(Gifi)
+library(GPArotation)
+library(lavaan)
+library(nFactors)
+library(olsrr)
+library(PerformanceAnalytics)
+library(psych)
+library(rstatix)
+library(tidyverse)
+
+getwd()
+Study1 <- read.csv("Study1a_Nums_2&3RowsRemoved_20200701.csv")
+head(Study1)
+str(Study1)
+
+# factor analysis for performance and learning ratings after each vignette - how to select num of factors
+# how to compare 4 MC questions
+# how to manage conflicting results based on ranking and regression analysis
+```
+
+
+```{r data cleaning}
+# remove rows 1-16, these are responses collected in May 2019 and tests
+Study1[17,]
+Study1 <- Study1[-c(1:16), ]
+head(Study1)
+# keep finished = 1
+str(Study1$Finished)
+Study1 <- subset(Study1, Finished == 1)
+Study1$Finished
+# remove duplicate names
+Study1 <- Study1[!duplicated(Study1$name), ]
+Study1$name # now there are 528 rows
+# remove columns 1-22, 118-126
+names(Study1)
+Study1 <- Study1[-c(1:22, 118:126)]
+names(Study1)
+# attach unique IDs
+Study1 <- tibble::rowid_to_column(Study1, "id") # row id as column
+head(Study1)
+#write.csv(Study1, "Study1_Nums_Cleaned.csv", row.names = FALSE)
+```
+
+
+```{r demographics}
+names(Study1)
+# ------ age # int ------
+Study1$Age
+str(Study1$Age) # int
+mean(Study1$Age, na.rm = TRUE) # 20.50
+sd(Study1$Age, na.rm = TRUE) # 2.08
+
+# ------ Gender_recode # factor ------
+Study1$Gender
+str(Study1$Gender)
+Study1$Gender <- as.factor(Study1$Gender)
+levels(Study1$Gender)
+Study1 <- Study1 %>%
+    mutate(gender_recode = ifelse(Gender == "F" | Gender == "Femaile" | Gender == "femal" | 
+                                      Gender == "Femal" | Gender == "female" | Gender == "Female" | 
+                                      Gender == "FEMALE" | Gender == "female " | Gender == "Female " | 
+                                      Gender == "females" | Gender == "femalw" | Gender == "femlae " |
+                                      Gender == "woman" | Gender == "Woman", "F", 
+                                  ifelse(Gender == "cis male" | Gender == "m" | Gender == "M" | 
+                                             Gender == "male" | Gender == "Male" | Gender == "MaLE" | 
+                                             Gender == "MALE" | Gender == "Male " | Gender == "Man", "M", 
+                                         ifelse(Gender == "Non-Binary" | Gender == "nonbinary" | 
+                                                    Gender == "Nonbinary" | Gender == "Nonbinary/Genderqueer", 
+                                                "other", NA))))
+Study1$gender_recode
+Study1$gender_recode <- as.factor(Study1$gender_recode)
+levels(Study1$gender_recode) # factor
+table(Study1$gender_recode) # F 329, M 194, other 5
+prop.table(table(Study1$gender_recode)) # F 62%, M 37%, other 1%
+
+# ------ URM # factor ------
+Study1$Ethnicity
+str(Study1$Ethnicity) # char
+# Ethnicity_8_TEXT
+Study1$Ethnicity_8_TEXT # mostly mixed, one case each of South Asian and Jewish
+# 1 = Afican American or Black, 2 = American Indian or Alaska Native, 3 = Middle Eastern, 4 = Asian, 5 = Hispanic or Latino/a, 6 = Native Hawaiian or Other Pacific Islander, 7 = White or Caucasian, 8 = Other
+Study1 <- Study1 %>%
+    mutate(Ethnicity_Black = ifelse(str_detect(Study1$Ethnicity, "1"), 1, 0),
+           Ethnicity_Native = ifelse(str_detect(Study1$Ethnicity, "2"), 1, 0),
+           Ethnicity_MEasten = ifelse(str_detect(Study1$Ethnicity, "3"), 1, 0),
+           Ethnicity_Asian = ifelse(str_detect(Study1$Ethnicity, "4"), 1, 0),
+           Ethnicity_Hispanic = ifelse(str_detect(Study1$Ethnicity, "5"), 1, 0),
+           Ethnicity_Pacific = ifelse(str_detect(Study1$Ethnicity, "6"), 1, 0),
+           Ethnicity_White = ifelse(str_detect(Study1$Ethnicity, "7"), 1, 0),
+           Ethnicity_Other = ifelse(str_detect(Study1$Ethnicity, "8"), 1, 0))
+sum(Study1$Ethnicity_Black) # 39, 7
+sum(Study1$Ethnicity_Native) # 5, 1
+sum(Study1$Ethnicity_MEasten) # 11, 2
+sum(Study1$Ethnicity_Asian) # 145, 27
+sum(Study1$Ethnicity_Hispanic) # 124, 23
+sum(Study1$Ethnicity_Pacific) # 1, 0
+sum(Study1$Ethnicity_White) # 252, 48
+sum(Study1$Ethnicity_Other) # 10, 2
+# proportions
+PropofEthnicity <- Study1 %>%
+    dplyr::summarize_at(c("Ethnicity_Black", "Ethnicity_Native", "Ethnicity_MEasten", "Ethnicity_Asian", 
+                          "Ethnicity_Hispanic", "Ethnicity_Pacific", "Ethnicity_White", "Ethnicity_Other"), 
+                        mean, na.rm = TRUE) %>%
+    tidyr::gather(Barrier, Prop, c("Ethnicity_Black", "Ethnicity_Native", "Ethnicity_MEasten", "Ethnicity_Asian", 
+                          "Ethnicity_Hispanic", "Ethnicity_Pacific", "Ethnicity_White", "Ethnicity_Other")) 
+                          # gather(new key column name, new value column name, selected columns)
+PropofEthnicity
+# URM defined as 1, 2, 5, or 6 , see https://news.utexas.edu/2020/10/06/increasing-diversity-in-academia-is-aim-of-new-alliance-with-national-science-foundation/
+Study1$Ethnicity <- as.factor(Study1$Ethnicity)
+levels(Study1$Ethnicity) # factor
+# "1,5", "2,5"
+Study1 <- Study1 %>%
+    mutate(URM = ifelse(Ethnicity == "1" | Ethnicity == "2" | Ethnicity == "5" | 
+                            Ethnicity == "6" | Ethnicity == "1,5" | Ethnicity == "2,5", "URM", "non-URM"))
+Study1$URM
+Study1$URM <- as.factor(Study1$URM)
+levels(Study1$URM) # factor
+table(Study1$URM) # non 399, URM 129
+
+prop.table(table(Study1$URM)) # non 76%, URM 24%
+
+# ------ firstGen # factor ------
+Study1$MomEdu
+str(Study1$MomEdu) # int
+Study1$DadEdu
+str(Study1$DadEdu) # int
+# 1 = Elementary or middle school, 2 = High school, 3 = Technical college, 4 = Some college, no degree, 5 = Associate's degree, 6 = Bachelor's degree, 7 = Graduate degree, 8 = NA
+# firstGen defined as neither parents has a bachelor's degree or higher (opposite is either parent has a bachelor's degree or higher), see https://firstgeneration.utexas.edu/
+Study1 <- Study1 %>%
+    mutate(firstGen = ifelse(MomEdu == 8 & DadEdu == 8, NA, 
+                             ifelse(MomEdu >= 6 | DadEdu >= 6, "non-firstGen", "firstGen")))
+Study1$firstGen
+Study1$firstGen <- as.factor(Study1$firstGen)
+levels(Study1$firstGen) # factor
+table(Study1$firstGen) # non 390, first-gen 136
+prop.table(table(Study1$firstGen)) # non 74%, first-gen 26%
+
+
+```
+
+
+```{r compare TMK (performance and learning scale) across students}
+# correlation among P and L ratings for each student
+names(Study1)
+# ------ EFA for SA ------
+SA_corr <- Study1[, c(2:5)]
+chart.Correlation(SA_corr, histogram=TRUE, pch=19) # 0.46-0.72
+EFA_SA <- fa.parallel(Study1[c(2:5)], fm = "minres", fa = "fa") # nparallel: 1 factor
+nScree(Study1[c(2:5)], model="factors") # noc: 1, naf: 1, nparallel: 1, nkaiser: 1
+plot(nScree(Study1[c(2:5)], model="factors"))
+# 2 factors
+#EFA2_SA = fa(Study1[c(2:5)], 2, rotate = "oblimin", fm = "minres")
+#EFA2_SA
+#print(EFA2_SA$loadings, cutoff = 0.3) # SA_Learn1 loaded on both factors
+# 1 factor
+EFA1_SA = fa(Study1[c(2:5)], 1, rotate = "oblimin", fm = "minres")
+EFA1_SA
+print(EFA1_SA$loadings, cutoff = 0.3)
+# cronbach's alpha
+alpha_PL_SA <- psych::alpha(Study1[c("SA_Perf1", "SA_Perf2", "SA_Learn1", "SA_Learn2")])
+alpha_PL_SA # 0.83
+
+# ------ EFA for SB ------
+SB_corr <- Study1[, c(6:9)]
+chart.Correlation(SB_corr, histogram=TRUE, pch=19) # 0.47-0.79
+EFA_SB <- fa.parallel(Study1[c(6:9)], fm = "minres", fa = "fa") # nparallel: 2 factors
+nScree(Study1[c(6:9)], model="factors") # noc: 1, naf: 1, nparallel: 1, nkaiser: 1
+plot(nScree(Study1[c(6:9)], model="factors"))
+# 2 factors
+#EFA2_SB = fa(Study1[c(6:9)], 2, rotate = "oblimin", fm = "minres")
+#EFA2_SB
+#print(EFA2_SB$loadings, cutoff = 0.3) # P and L are two separate factors
+# 1 factor
+EFA1_SB = fa(Study1[c(6:9)], 1, rotate = "oblimin", fm = "minres")
+EFA1_SB
+print(EFA1_SB$loadings, cutoff = 0.3) 
+# cronbach's alpha
+alpha_PL_SB <- psych::alpha(Study1[c("SB_Perf1", "SB_Perf2", "SB_Learn1", "SB_Learn2")])
+alpha_PL_SB # 0.85
+
+# ------ EFA for SC ------
+SC_corr <- Study1[, c(10:13)]
+chart.Correlation(SC_corr, histogram=TRUE, pch=19) # 0.47-0.82
+EFA_SC <- fa.parallel(Study1[c(10:13)], fm = "minres", fa = "fa") # nparallel: 2 factors
+nScree(Study1[c(10:13)], model="factors") # noc: 1, naf: 1, nparallel: 1, nkaiser: 1
+plot(nScree(Study1[c(10:13)], model="factors"))
+# 2 factors
+#EFA2_SC = fa(Study1[c(10:13)], 2, rotate = "oblimin", fm = "minres")
+#EFA2_SC
+#print(EFA2_SC$loadings, cutoff = 0.3) # P and L are two separate factors
+# 1 factor
+EFA1_SC = fa(Study1[c(10:13)], 1, rotate = "oblimin", fm = "minres")
+EFA1_SC
+print(EFA1_SC$loadings, cutoff = 0.3) 
+
+# cronbach's alpha
+alpha_PL_SC <- psych::alpha(Study1[c("SC_Perf1", "SC_Perf2", "SC_Learn1", "SC_Learn2")])
+alpha_PL_SC # 0.84
+
+# ------ create new variables SA_PL, SB_PL, SC_PL ------
+Study1 <- Study1 %>%
+    mutate(SA_PL = (SA_Perf1 + SA_Perf2 + SA_Learn1 + SA_Learn2)/4,
+           SB_PL = (SB_Perf1 + SB_Perf2 + SB_Learn1 + SB_Learn2)/4,
+           SC_PL = (SC_Perf1 + SC_Perf2 + SC_Learn1 + SC_Learn2)/4)
+Study1$SA_PL
+Study1$SB_PL
+Study1$SC_PL
+
+# ------ descriptives for PLscale ------
+PLscale_desc <- Study1 %>%
+    summarize_at(vars(SA_PL, SB_PL, SC_PL), 
+                 funs(num = sum(!is.na(.)), mean, sd), na.rm = TRUE) %>%
+    mutate_if(is.numeric, round, digits = 2)
+PLscale_desc
+# A 6.09 (0.89), B 4.34 (1.11), c 4.97 (1.06), n = 528 for all within conditions
+
+# <insert graph here>
+
+# ------ within-subjects ANOVA for PLscale ------
+# convert wide format to long format
+PLscale_long <- Study1 %>%
+    dplyr::select(id, SA_PL, SB_PL, SC_PL) %>%
+    tidyr::gather(key = "student", value = "PLscale", SA_PL, SB_PL, SC_PL) %>%
+    rstatix::convert_as_factor(id, student)
+head(PLscale_long)
+
+# double check n, m, & sd
+PLscale_long %>%
+    dplyr::group_by(student) %>%
+    rstatix::get_summary_stats(PLscale, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# one-way ANOVA
+PLscale_ANOVA <- rstatix::anova_test(data = PLscale_long, dv = PLscale, wid = id, 
+                                     within = student, type = 3, effect.size = "pes")
+rstatix::get_anova_table(PLscale_ANOVA, correction = "none") 
+# F(2, 1054) = 459.49, p < 0.001, pes = 0.466
+
+# post-hoc
+PLscale_ANOVA_posthoc <- PLscale_long %>%
+    rstatix::pairwise_t_test(
+        PLscale ~ student, paired = TRUE,
+        p.adjust.method = "bonferroni")
+PLscale_ANOVA_posthoc
+# A vs. B t(527) = 30.52, p < 0.001
+# A vs. C t(527) = 20.07, p < 0.001
+# B vs. C t(527) = -10.17, p < 0.001
+
+PLscale_long %>% rstatix::cohens_d(PLscale ~ student, paired = TRUE)
+# A vs. B d = 1.33
+# A vs. C d = 0.87
+# B vs. C d = -0.44
+
+# ------ graph ------
+PLscale_long_input <- PLscale_long %>%
+    dplyr::group_by(student) %>%
+    rstatix::get_summary_stats(PLscale, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2)
+PLscale_long_input
+PLscale_long_input <- PLscale_long_input %>%
+    mutate(studentPrint = c("Active", "Passive", "Monitoring")) 
+PLscale_long_input
+PLscale_long_input$studentPrint <- factor(PLscale_long_input$studentPrint,
+                                          levels = c("Active", "Monitoring", "Passive"))
+PLscale_long_input
+PLscale_long_graph <- ggplot(data = PLscale_long_input, aes(fill = studentPrint, y = mean, x = studentPrint)) +
+    geom_bar(width = 0.7, position = "dodge", stat = "identity") +
+    scale_fill_grey(start = 0.3, end = 0.8) +
+    geom_errorbar(aes(ymin=mean-se,ymax=mean+se),width=0.3,position=position_dodge(0.9)) +
+    geom_text(aes(label=format(round(mean, digits = 2), nsmall = 2)), vjust = -1,
+              color="black", size = 3.5, position = position_dodge(0.9)) +
+    coord_cartesian(ylim = c(1, 7.1)) + 
+    scale_y_continuous(expand = c(0, 0), breaks = seq(1, 7, 1)) + 
+    labs(title = "Performance and Learning Rating",
+         x = "Category of Strategies",
+         y = "1=Not at all true\n7=Very true") +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"),
+          plot.title = element_text(size = 10, face = "bold"),
+          axis.title=element_text(size = 10),
+          axis.text=element_text(size = 10),
+          axis.text.x = element_text(color = "black"),
+          axis.text.y = element_text(color = "black"),
+          legend.title=element_text(size = 10, face = "bold"), 
+          legend.text=element_text(size = 10),
+          legend.position = "none")
+PLscale_long_graph
+#ggsave("PLscale.pdf", width = 3, height = 3, dpi = 600)
+```
+
+
+```{r compare TMK (performance and learning proportion) across students}
+# ------ categorical PCA ------
+# https://rdrr.io/rforge/Gifi/man/princals.html
+str(Study1[14:17])
+Study1$SABC_Perf1 <- as.factor(Study1$SABC_Perf1)
+Study1$SABC_Perf2 <- as.factor(Study1$SABC_Perf2)
+Study1$SABC_Learn1 <- as.factor(Study1$SABC_Learn1)
+Study1$SABC_Learn2 <- as.factor(Study1$SABC_Learn2)
+str(Study1[14:17])
+CatPCA_4 <- princals(Study1[c("SABC_Perf1", "SABC_Perf2", "SABC_Learn1", "SABC_Learn2")], 
+                   ndim = 4, ordinal=FALSE)  ## cat PCA
+plot(CatPCA_4, "screeplot") # 2 PCs
+CatPCA_2 <- princals(Study1[c("SABC_Perf1", "SABC_Perf2", "SABC_Learn1", "SABC_Learn2")], 
+                   ndim = 2, ordinal=FALSE)  ## cat PCA
+plot(CatPCA_2, "screeplot") # 1PC
+CatPCA_2$loadings # all have cross loadings
+CatPCA_1 <- princals(Study1[c("SABC_Perf1", "SABC_Perf2", "SABC_Learn1", "SABC_Learn2")], 
+                   ndim = 1, ordinal=FALSE)  ## cat PCA
+#c plot(CatPCA_1, "screeplot") # doesn't work
+CatPCA_1$loadings # some are pos some are neg?
+#summary(CatPCA)
+
+plot(CatPCA, plot.type = "transplot")
+plot(CatPCA, "loadplot", main = "Loadings Plot ABC Data")  ## aspect ratio = 1
+plot(CatPCA, "biplot", labels.scores = TRUE, main = "Biplot ABC Data")
+
+
+# proportaion table for each P and L
+prop.table(table(Study1$SABC_Perf1))
+prop.table(table(Study1$SABC_Perf2))
+prop.table(table(Study1$SABC_Learn1))
+prop.table(table(Study1$SABC_Learn2))
+
+# ------ create new variables PLprop_A, PLprop_B, PLprop_C ------
+Study1 <- Study1 %>%
+    mutate(Perf1_A = ifelse(SABC_Perf1 == 1, 1, 0),
+           Perf1_B = ifelse(SABC_Perf1 == 2, 1, 0),
+           Perf1_C = ifelse(SABC_Perf1 == 3, 1, 0),
+           Perf2_A = ifelse(SABC_Perf2 == 1, 1, 0),
+           Perf2_B = ifelse(SABC_Perf2 == 2, 1, 0),
+           Perf2_C = ifelse(SABC_Perf2 == 3, 1, 0),
+           Learn1_A = ifelse(SABC_Learn1 == 1, 1, 0),
+           Learn1_B = ifelse(SABC_Learn1 == 2, 1, 0),
+           Learn1_C = ifelse(SABC_Learn1 == 3, 1, 0),
+           Learn2_A = ifelse(SABC_Learn2 == 1, 1, 0),
+           Learn2_B = ifelse(SABC_Learn2 == 2, 1, 0),
+           Learn2_C = ifelse(SABC_Learn2 == 3, 1, 0),
+           PLprop_A = (Perf1_A + Perf2_A + Learn1_A + Learn2_A)/4,
+           PLprop_B = (Perf1_B + Perf2_B + Learn1_B + Learn2_B)/4,
+           PLprop_C = (Perf1_C + Perf2_C + Learn1_C + Learn2_C)/4)
+
+# ------ descriptives for PLprop ------
+PLprop_desc <- Study1 %>%
+    summarize_at(vars(PLprop_A, PLprop_B, PLprop_C), 
+                 funs(num = sum(!is.na(.)), mean, sd), na.rm = TRUE) %>%
+    mutate_if(is.numeric, round, digits = 2)
+PLprop_desc
+# A 0.73 (0.31), B 0.08 (0.18), c 0.19 (0.26), n = 528 for all within conditions
+
+# ------ within-subjects t-tests for PLprop ------
+# convert wide format to long format
+PLprop_long <- Study1 %>%
+    dplyr::select(id, PLprop_A, PLprop_B, PLprop_C) %>%
+    tidyr::gather(key = "student", value = "PLprop", PLprop_A, PLprop_B, PLprop_C) %>%
+    rstatix::convert_as_factor(id, student)
+head(PLprop_long)
+
+# double check n, m, & sd
+PLprop_long %>%
+    dplyr::group_by(student) %>%
+    rstatix::get_summary_stats(PLprop, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# A vs. B
+PLprop_AvB <- subset(PLprop_long, student == "PLprop_A" | student == "PLprop_B")
+head(PLprop_AvB)
+leveneTest(PLprop ~ student, data = PLprop_AvB) 
+# p < 0.001 --> however assume equal var anyway
+PLprop_AvB_ttest <- t.test(PLprop ~ student, paired = TRUE, data = PLprop_AvB)
+PLprop_AvB_ttest 
+# WRONG raw result shows A vs. B; t(1054) = 41.939, p < 0.001
+PLprop_AvB %>% rstatix::cohens_d(PLprop ~ student, paired = TRUE)
+
+# A vs. C
+PLprop_AvC <- subset(PLprop_long, student == "PLprop_A" | student == "PLprop_C")
+head(PLprop_AvC)
+leveneTest(PLprop ~ student, data = PLprop_AvC) 
+# p < 0.001 --> however assume equal var anyway
+PLprop_AvC_ttest <- t.test(PLprop ~ student, paired = TRUE, data = PLprop_AvC)
+PLprop_AvC_ttest 
+# WRONG raw result shows A vs. C; t(1054) = 30.258, p < 0.001
+PLprop_AvC_cohend <- psych::cohen.d(x = PLprop_AvC$PLprop, group = PLprop_AvC$student, paired = TRUE) 
+PLprop_AvC_cohend
+# raw result shows C vs. A; d = 1.86
+
+# B vs. C
+PLprop_BvC <- subset(PLprop_long, student == "PLprop_B" | student == "PLprop_C")
+head(PLprop_BvC)
+leveneTest(PLprop ~ student, data = PLprop_BvC) 
+# p < 0.001 --> however assume equal var anyway
+PLprop_BvC_ttest <- t.test(PLprop ~ student, paired = TRUE, data = PLprop_BvC)
+PLprop_BvC_ttest 
+# WRONG raw result shows B vs. C; t(1054) = -8.537, p < 0.001
+PLprop_BvC_cohend <- psych::cohen.d(x = PLprop_BvC$PLprop, group = PLprop_BvC$student) 
+PLprop_BvC_cohend
+# raw result shows C vs. B; d = -0.53
+```
+
+
+```{r compare use (similarity) across students}
+# ------ descriptives for HowSim ------
+HowSim_desc <- Study1 %>%
+    summarize_at(vars(SA_HowSim, SB_HowSim, SC_HowSim), 
+                 funs(num = sum(!is.na(.)), mean, sd), na.rm = TRUE) %>%
+    mutate_if(is.numeric, round, digits = 2)
+HowSim_desc
+# A 3.13 (1.01), B 3.61 (1.14), c 3.19 (1.12), n = 528 for all within conditions
+
+# ------ within-subjects ANOVA for HowSim ------
+# https://www.datanovia.com/en/lessons/repeated-measures-anova-in-r/
+# convert wide format to long format
+HowSim_long <- Study1 %>%
+    dplyr::select(id, SA_HowSim, SB_HowSim, SC_HowSim) %>%
+    tidyr::gather(key = "student", value = "HowSim", SA_HowSim, SB_HowSim, SC_HowSim) %>%
+    rstatix::convert_as_factor(id, student)
+head(HowSim_long)
+
+# double check n, m, & sd
+HowSim_long %>%
+    dplyr::group_by(student) %>%
+    rstatix::get_summary_stats(HowSim, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# one-way ANOVA
+HowSim_ANOVA <- rstatix::anova_test(data = HowSim_long, dv = HowSim, wid = id, 
+                                    within = student, type = 3, effect.size = "pes")
+rstatix::get_anova_table(HowSim_ANOVA, correction = "none") 
+# if sphericity is violated, get_anova_table automatically applies the Greenhouse Geisser correction
+# F(2, 1054) = 27.96, p < 0.001, pes = 0.050
+
+# https://www.datanovia.com/en/lessons/how-to-do-a-t-test-in-r-calculation-and-reporting/how-to-do-paired-t-test-in-r/
+# post-hoc
+HowSim_ANOVA_posthoc <- HowSim_long %>%
+    rstatix::pairwise_t_test(
+        HowSim ~ student, paired = TRUE,
+        p.adjust.method = "bonferroni")
+HowSim_ANOVA_posthoc
+# A vs. B t(527) = -6.87, p < 0.001
+# A vs. C t(527) = -0.94, p = 0.35
+# B vs. C t(527) = 5.70, p < 0.001
+
+HowSim_long %>% rstatix::cohens_d(HowSim ~ student, paired = TRUE)
+# A vs. B d = -0.30
+# A vs. C d = -0.04
+# B vs. C d = 0.25
+
+# ------ graph ------
+HowSim_long_input <- HowSim_long %>%
+    dplyr::group_by(student) %>%
+    rstatix::get_summary_stats(HowSim, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2)
+HowSim_long_input
+HowSim_long_input <- HowSim_long_input %>%
+    mutate(studentPrint = c("Active", "Passive", "Monitoring")) 
+HowSim_long_input
+HowSim_long_input$studentPrint <- factor(HowSim_long_input$studentPrint,
+                                          levels = c("Active", "Monitoring", "Passive"))
+HowSim_long_input
+HowSim_long_graph <- ggplot(data = HowSim_long_input, aes(fill = studentPrint, y = mean, x = studentPrint)) +
+    geom_bar(width = 0.7, position = "dodge", stat = "identity") +
+    scale_fill_grey(start = 0.3, end = 0.8) +
+    geom_errorbar(aes(ymin=mean-se,ymax=mean+se),width=0.3,position=position_dodge(0.9)) +
+    geom_text(aes(label=format(round(mean, digits = 2), nsmall = 2)), vjust = -1,
+              color="black", size = 3.5, position = position_dodge(0.9)) +
+    coord_cartesian(ylim = c(1, 7.1)) + 
+    scale_y_continuous(expand = c(0, 0), breaks = seq(1, 5, 1)) + 
+    labs(title = "Frequency of Using Strategies",
+         x = "Category of Strategies",
+         y = "1=Never\n5=Very often") +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"),
+          plot.title = element_text(size = 10, face = "bold"),
+          axis.title=element_text(size = 10),
+          axis.text=element_text(size = 10),
+          axis.text.x = element_text(color = "black"),
+          axis.text.y = element_text(color = "black"),
+          legend.title=element_text(size = 10, face = "bold"), 
+          legend.text=element_text(size = 10),
+          legend.position = "none")
+HowSim_long_graph
+#ggsave("HowSim.pdf", width = 3, height = 3, dpi = 600)
+
+# ------ putting them together ------
+ggarrange(PLscale_long_graph, HowSim_long_graph,
+          ncol = 2, nrow = 1)
+ggsave("AMKvsUse_20211005.png", width = 6, height = 3, dpi = 600)
+```
+
+
+```{r AMK & cost (barriers) descriptives}
+# ------------ SA_WhyNotSim ------------
+# convert this multiple choice multiple option item in to multiple binary items
+Study1$SA_WhyNotSim
+str(Study1$SA_WhyNotSim) # char
+# 1-LowEfficacy1, 2-NoTime, 3-LowEffectPerf, 4-TooDifficult, 5-TooMuchEffort, 6-LowEffectLearn, 7-LowEfficacy2, 
+# 8-Boring, 9-Nervous, 10-Other
+Study1$SA_WhyNotSim = str_replace(Study1$SA_WhyNotSim, "10", "0") # otherwise the 1 in 10 will be mistaken as 1
+Study1$SA_WhyNotSim
+sum(is.na(Study1$SA_WhyNotSim)) # no NA
+Study1 <- Study1 %>%
+    mutate(SA_Other = ifelse(str_detect(Study1$SA_WhyNotSim, "0"), 1, 0),
+           SA_Nervous = ifelse(str_detect(Study1$SA_WhyNotSim, "9"), 1, 0),
+           SA_Boring = ifelse(str_detect(Study1$SA_WhyNotSim, "8"), 1, 0),
+           SA_LowEfficacy2 = ifelse(str_detect(Study1$SA_WhyNotSim, "7"), 1, 0),
+           SA_LowEffectLearn = ifelse(str_detect(Study1$SA_WhyNotSim, "6"), 1, 0),
+           SA_TooMuchEffort = ifelse(str_detect(Study1$SA_WhyNotSim, "5"), 1, 0),
+           SA_TooDifficult = ifelse(str_detect(Study1$SA_WhyNotSim, "4"), 1, 0),
+           SA_LowEffectPerf = ifelse(str_detect(Study1$SA_WhyNotSim, "3"), 1, 0),
+           SA_NoTime = ifelse(str_detect(Study1$SA_WhyNotSim, "2"), 1, 0),
+           SA_LowEfficacy1 = ifelse(str_detect(Study1$SA_WhyNotSim, "1"), 1, 0))
+
+# proportions
+PropofBarriers_A <- Study1 %>%
+    dplyr::summarize_at(c("SA_LowEfficacy1", "SA_NoTime", "SA_LowEffectPerf", "SA_TooDifficult", 
+                          "SA_TooMuchEffort", "SA_LowEffectLearn", "SA_LowEfficacy2", "SA_Boring", 
+                          "SA_Nervous", "SA_Other"), mean, na.rm = TRUE) %>%
+    tidyr::gather(Barrier, Prop, c("SA_LowEfficacy1", "SA_NoTime", "SA_LowEffectPerf", "SA_TooDifficult", 
+                                   "SA_TooMuchEffort", "SA_LowEffectLearn", "SA_LowEfficacy2", "SA_Boring",
+                                   "SA_Nervous", "SA_Other")) 
+                          # gather(new key column name, new value column name, selected columns)
+PropofBarriers_A <- arrange(PropofBarriers_A, desc(Prop))
+PropofBarriers_A
+# NoTime 56%
+# TooMuchEffort 31%
+# LowEfficacy2 18%
+# LowEfficacy1 13%
+
+# efficacy and effectiveness items combined
+Study1 <- Study1 %>%
+    mutate(SA_LowEfficacy = ifelse(SA_LowEfficacy1 == 1 | SA_LowEfficacy2 == 1, 1, 0),
+           SA_LowEffect = ifelse(SA_LowEffectPerf == 1 | SA_LowEffectLearn == 1, 1, 0))
+
+PropofBarriers_A_Combo <- Study1 %>%
+    dplyr::summarize_at(c("SA_NoTime", "SA_TooDifficult", "SA_TooMuchEffort", "SA_Boring", "SA_Nervous", 
+                          "SA_Other", "SA_LowEfficacy", "SA_LowEffect"), mean, na.rm = TRUE) %>%
+    tidyr::gather(Barrier, Prop, c("SA_NoTime", "SA_TooDifficult", "SA_TooMuchEffort", "SA_Boring", "SA_Nervous",
+                                   "SA_Other", "SA_LowEfficacy", "SA_LowEffect")) 
+                          # gather(new key column name, new value column name, selected columns)
+PropofBarriers_A_Combo <- arrange(PropofBarriers_A_Combo, desc(Prop))
+PropofBarriers_A_Combo
+# SA_NoTime, SA_TooMuchEffort, SA_LowEfficacy
+
+# phi-coefficient (equivalent to correlation)
+# https://stat.ethz.ch/pipermail/r-help/2015-April/428127.html
+corr.test(Study1[c("SA_LowEfficacy1", "SA_NoTime", "SA_LowEffectPerf", "SA_TooDifficult", 
+                          "SA_TooMuchEffort", "SA_LowEffectLearn", "SA_LowEfficacy2", "SA_Boring", 
+                          "SA_Nervous", "SA_Other")]) # ignore the probability values
+# phi(SA_LowEfficacy1, SA_LowEfficacy2) = 0.16
+
+# ------------ SB_WhyNotSim ------------
+# convert this multiple choice multiple option item in to multiple binary items
+Study1$SB_WhyNotSim
+str(Study1$SB_WhyNotSim)
+# 1-LowEfficacy1, 2-NoTime, 3-LowEffectPerf, 4-TooDifficult, 5-TooMuchEffort, 6-LowEffectLearn, 7-LowEfficacy2, 
+# 8-Boring, 9-Nervous, 10-Other
+Study1$SB_WhyNotSim = str_replace(Study1$SB_WhyNotSim, "10", "0") # otherwise the 1 in 10 will be mistaken as 1
+Study1$SB_WhyNotSim
+sum(is.na(Study1$SB_WhyNotSim)) # no NA
+Study1 <- Study1 %>%
+    mutate(SB_Other = ifelse(str_detect(Study1$SB_WhyNotSim, "0"), 1, 0),
+           SB_Nervous = ifelse(str_detect(Study1$SB_WhyNotSim, "9"), 1, 0),
+           SB_Boring = ifelse(str_detect(Study1$SB_WhyNotSim, "8"), 1, 0),
+           SB_LowEfficacy2 = ifelse(str_detect(Study1$SB_WhyNotSim, "7"), 1, 0),
+           SB_LowEffectLearn = ifelse(str_detect(Study1$SB_WhyNotSim, "6"), 1, 0),
+           SB_TooMuchEffort = ifelse(str_detect(Study1$SB_WhyNotSim, "5"), 1, 0),
+           SB_TooDifficult = ifelse(str_detect(Study1$SB_WhyNotSim, "4"), 1, 0),
+           SB_LowEffectPerf = ifelse(str_detect(Study1$SB_WhyNotSim, "3"), 1, 0),
+           SB_NoTime = ifelse(str_detect(Study1$SB_WhyNotSim, "2"), 1, 0),
+           SB_LowEfficacy1 = ifelse(str_detect(Study1$SB_WhyNotSim, "1"), 1, 0))
+
+# proportions
+PropofBarriers_B <- Study1 %>%
+    dplyr::summarize_at(c("SB_LowEfficacy1", "SB_NoTime", "SB_LowEffectPerf", "SB_TooDifficult", 
+                          "SB_TooMuchEffort", "SB_LowEffectLearn", "SB_LowEfficacy2", "SB_Boring", 
+                          "SB_Nervous", "SB_Other"), mean, na.rm = TRUE) %>%
+    tidyr::gather(Barrier, Prop, c("SB_LowEfficacy1", "SB_NoTime", "SB_LowEffectPerf", "SB_TooDifficult",
+                                   "SB_TooMuchEffort", "SB_LowEffectLearn", "SB_LowEfficacy2", "SB_Boring",
+                                   "SB_Nervous", "SB_Other")) 
+                          # gather(new key column name, new value column name, selected columns)
+PropofBarriers_B <- arrange(PropofBarriers_B, desc(Prop))
+PropofBarriers_B 
+# Boring 47%
+# LowEffectLearn 29%
+# NoTime 29%
+# LowEffectPerf 27%
+# Nervous 21%
+
+# efficacy and effectiveness items combined
+Study1 <- Study1 %>%
+    mutate(SB_LowEfficacy = ifelse(SB_LowEfficacy1 == 1 | SB_LowEfficacy2 == 1, 1, 0),
+           SB_LowEffect = ifelse(SB_LowEffectPerf == 1 | SB_LowEffectLearn == 1, 1, 0))
+
+PropofBarriers_B_Combo <- Study1 %>%
+    dplyr::summarize_at(c("SB_NoTime", "SB_TooDifficult", "SB_TooMuchEffort", "SB_Boring", "SB_Nervous", 
+                          "SB_Other", "SB_LowEfficacy", "SB_LowEffect"), mean, na.rm = TRUE) %>%
+    tidyr::gather(Barrier, Prop, c("SB_NoTime", "SB_TooDifficult", "SB_TooMuchEffort", "SB_Boring", "SB_Nervous",
+                                   "SB_Other", "SB_LowEfficacy", "SB_LowEffect")) 
+                          # gather(new key column name, new value column name, selected columns)
+PropofBarriers_B_Combo <- arrange(PropofBarriers_B_Combo, desc(Prop))
+PropofBarriers_B_Combo
+# SB_Boring, SB_LowEffect, SB_NoTime
+
+# phi-coefficient (equivalent to correlation)
+corr.test(Study1[c("SB_LowEfficacy1", "SB_NoTime", "SB_LowEffectPerf", "SB_TooDifficult", 
+                          "SB_TooMuchEffort", "SB_LowEffectLearn", "SB_LowEfficacy2", "SB_Boring", 
+                          "SB_Nervous", "SB_Other")]) # ignore the probability values
+# phi(SA_LowEfficacy1, SA_LowEfficacy2) = 0.02
+
+# ------------ SC_WhyNotSim ------------
+# convert this multiple choice multiple option item in to multiple binary items
+Study1$SC_WhyNotSim
+str(Study1$SC_WhyNotSim)
+# 1-LowEfficacy1, 2-NoTime, 3-LowEffectPerf, 4-TooDifficult, 5-TooMuchEffort, 6-LowEffectLearn, 7-LowEfficacy2, 
+# 8-Boring, 9-Nervous, 10-Other
+Study1$SC_WhyNotSim = str_replace(Study1$SC_WhyNotSim, "10", "0") # otherwise the 1 in 10 will be mistaken as 1
+Study1$SC_WhyNotSim
+sum(is.na(Study1$SC_WhyNotSim)) # no NA
+Study1 <- Study1 %>%
+    mutate(SC_Other = ifelse(str_detect(Study1$SC_WhyNotSim, "0"), 1, 0),
+           SC_Nervous = ifelse(str_detect(Study1$SC_WhyNotSim, "9"), 1, 0),
+           SC_Boring = ifelse(str_detect(Study1$SC_WhyNotSim, "8"), 1, 0),
+           SC_LowEfficacy2 = ifelse(str_detect(Study1$SC_WhyNotSim, "7"), 1, 0),
+           SC_LowEffectLearn = ifelse(str_detect(Study1$SC_WhyNotSim, "6"), 1, 0),
+           SC_TooMuchEffort = ifelse(str_detect(Study1$SC_WhyNotSim, "5"), 1, 0),
+           SC_TooDifficult = ifelse(str_detect(Study1$SC_WhyNotSim, "4"), 1, 0),
+           SC_LowEffectPerf = ifelse(str_detect(Study1$SC_WhyNotSim, "3"), 1, 0),
+           SC_NoTime = ifelse(str_detect(Study1$SC_WhyNotSim, "2"), 1, 0),
+           SC_LowEfficacy1 = ifelse(str_detect(Study1$SC_WhyNotSim, "1"), 1, 0))
+
+# proportions
+PropofBarriers_C <- Study1 %>%
+    dplyr::summarize_at(c("SC_LowEfficacy1", "SC_NoTime", "SC_LowEffectPerf", "SC_TooDifficult", 
+                          "SC_TooMuchEffort", "SC_LowEffectLearn", "SC_LowEfficacy2", "SC_Boring", 
+                          "SC_Nervous", "SC_Other"), mean, na.rm = TRUE) %>%
+    tidyr::gather(Barrier, Prop, c("SC_LowEfficacy1", "SC_NoTime", "SC_LowEffectPerf", "SC_TooDifficult",
+                                   "SC_TooMuchEffort",  "SC_LowEffectLearn", "SC_LowEfficacy2", "SC_Boring",
+                                   "SC_Nervous", "SC_Other")) 
+                          # gather(new key column name, new value column name, selected columns)
+PropofBarriers_C <- arrange(PropofBarriers_C, desc(Prop))
+PropofBarriers_C
+# Nervous 35%
+# LowEfficacy2 29%
+# LowEffectPerf 21%
+# TooMuchEffort 21%
+# NoTime 21%
+# LowEfficacy1 19%
+
+# efficacy and effectiveness items combined
+Study1 <- Study1 %>%
+    mutate(SC_LowEfficacy = ifelse(SC_LowEfficacy1 == 1 | SC_LowEfficacy2 == 1, 1, 0),
+           SC_LowEffect = ifelse(SC_LowEffectPerf == 1 | SC_LowEffectLearn == 1, 1, 0))
+
+PropofBarriers_C_Combo <- Study1 %>%
+    dplyr::summarize_at(c("SC_NoTime", "SC_TooDifficult", "SC_TooMuchEffort", "SC_Boring", "SC_Nervous", 
+                          "SC_Other", "SC_LowEfficacy", "SC_LowEffect"), mean, na.rm = TRUE) %>%
+    tidyr::gather(Barrier, Prop, c("SC_NoTime", "SC_TooDifficult", "SC_TooMuchEffort", "SC_Boring", "SC_Nervous",
+                                   "SC_Other", "SC_LowEfficacy", "SC_LowEffect")) 
+                          # gather(new key column name, new value column name, selected columns)
+PropofBarriers_C_Combo <- arrange(PropofBarriers_C_Combo, desc(Prop))
+PropofBarriers_C_Combo
+# SC_LowEfficacy, SC_Nervous, SC_LowEffect
+
+# phi-coefficient (equivalent to correlation)
+corr.test(Study1[c("SC_LowEfficacy1", "SC_NoTime", "SC_LowEffectPerf", "SC_TooDifficult", 
+                          "SC_TooMuchEffort", "SC_LowEffectLearn", "SC_LowEfficacy2", "SC_Boring", 
+                          "SC_Nervous", "SC_Other")]) # ignore the probability values
+# phi(SA_LowEfficacy1, SA_LowEfficacy2) = 0.02
+
+# ------ chi-square independence for WhyNotSim ------
+# counts
+CountofBarriers_A <- Study1 %>%
+    dplyr::summarize_at(c("SA_NoTime", "SA_TooDifficult", "SA_TooMuchEffort", "SA_Boring", "SA_Nervous", 
+                          "SA_Other", "SA_LowEfficacy", "SA_LowEffect"), sum, na.rm = TRUE) %>%
+    tidyr::gather(Barrier_A, Count_A, c("SA_NoTime", "SA_TooDifficult", "SA_TooMuchEffort", "SA_Boring", "SA_Nervous",
+                                        "SA_Other", "SA_LowEfficacy", "SA_LowEffect")) %>%
+    dplyr::mutate(Barrier = c("NoTime", "TooDifficult", "TooMuchEffort", "Boring", "Nervous", 
+                              "Other", "LowEfficacy", "LowEffect")) %>%
+    dplyr::select(Barrier, Count_A)
+CountofBarriers_A
+
+CountofBarriers_B <- Study1 %>%
+    dplyr::summarize_at(c("SB_NoTime", "SB_TooDifficult", "SB_TooMuchEffort", "SB_Boring", "SB_Nervous", 
+                          "SB_Other", "SB_LowEfficacy", "SB_LowEffect"), sum, na.rm = TRUE) %>%
+    tidyr::gather(Barrier_B, Count_B, c("SB_NoTime", "SB_TooDifficult", "SB_TooMuchEffort", "SB_Boring", "SB_Nervous",
+                                        "SB_Other", "SB_LowEfficacy", "SB_LowEffect")) %>%
+    dplyr::mutate(Barrier = c("NoTime", "TooDifficult", "TooMuchEffort", "Boring", "Nervous", 
+                              "Other", "LowEfficacy", "LowEffect")) %>%
+    dplyr::select(Barrier, Count_B)
+CountofBarriers_B
+
+CountofBarriers_C <- Study1 %>%
+    dplyr::summarize_at(c("SC_NoTime", "SC_TooDifficult", "SC_TooMuchEffort", "SC_Boring", "SC_Nervous", 
+                          "SC_Other", "SC_LowEfficacy", "SC_LowEffect"), sum, na.rm = TRUE) %>%
+    tidyr::gather(Barrier_C, Count_C, c("SC_NoTime", "SC_TooDifficult", "SC_TooMuchEffort", "SC_Boring", "SC_Nervous",
+                                        "SC_Other", "SC_LowEfficacy", "SC_LowEffect")) %>%
+    dplyr::mutate(Barrier = c("NoTime", "TooDifficult", "TooMuchEffort", "Boring", "Nervous", 
+                              "Other", "LowEfficacy", "LowEffect")) %>%
+    dplyr::select(Barrier, Count_C)
+CountofBarriers_C
+
+CountofBarriers_AB <- dplyr::inner_join(CountofBarriers_A, CountofBarriers_B, by = "Barrier")
+CountofBarriers_AB
+CountofBarriers <- dplyr::inner_join(CountofBarriers_AB, CountofBarriers_C, by = "Barrier")
+CountofBarriers
+CountofBarriers <- tibble::column_to_rownames(CountofBarriers, "Barrier")
+CountofBarriers
+
+# http://www.sthda.com/english/wiki/chi-square-test-of-independence-in-r
+chisq_CountofBarriers <- chisq.test(CountofBarriers)
+chisq_CountofBarriers
+# chi2(14) = 519.42, p < 0.001
+# H0 means rows and cols are independent, reject H0 means rows and cols are dependent
+# some barriers are more frequent when studying like a certain student
+
+# # ------------ SA_WhyNotSim_Top ------------
+# convert this multiple choice multiple option item in to multiple binary items
+Study1$SA_WhyNotSim_Top
+str(Study1$SA_WhyNotSim_Top) # char
+# 1-LowEfficacy1, 2-NoTime, 3-LowEffectPerf, 4-TooDifficult, 5-TooMuchEffort, 6-LowEffectLearn, 7-LowEfficacy2, 
+# 8-Boring, 9-Nervous, 10-Other
+Study1$SA_WhyNotSim_Top = str_replace(Study1$SA_WhyNotSim_Top, "10", "0") 
+# otherwise the 1 in 10 will be mistaken as 1
+Study1$SA_WhyNotSim_Top
+Study1 <- Study1 %>%
+    mutate(SA_Other_Top = ifelse(str_detect(Study1$SA_WhyNotSim_Top, "0"), 1, 0),
+           SA_Nervous_Top = ifelse(str_detect(Study1$SA_WhyNotSim_Top, "9"), 1, 0),
+           SA_Boring_Top = ifelse(str_detect(Study1$SA_WhyNotSim_Top, "8"), 1, 0),
+           SA_LowEfficacy2_Top = ifelse(str_detect(Study1$SA_WhyNotSim_Top, "7"), 1, 0),
+           SA_LowEffectLearn_Top = ifelse(str_detect(Study1$SA_WhyNotSim_Top, "6"), 1, 0),
+           SA_TooMuchEffort_Top = ifelse(str_detect(Study1$SA_WhyNotSim_Top, "5"), 1, 0),
+           SA_TooDifficult_Top = ifelse(str_detect(Study1$SA_WhyNotSim_Top, "4"), 1, 0),
+           SA_LowEffectPerf_Top = ifelse(str_detect(Study1$SA_WhyNotSim_Top, "3"), 1, 0),
+           SA_NoTime_Top = ifelse(str_detect(Study1$SA_WhyNotSim_Top, "2"), 1, 0),
+           SA_LowEfficacy1_Top = ifelse(str_detect(Study1$SA_WhyNotSim_Top, "1"), 1, 0))
+
+# proportions
+PropofTopBarriers_A <- Study1 %>%
+    dplyr::summarize_at(c("SA_LowEfficacy1_Top", "SA_NoTime_Top", "SA_LowEffectPerf_Top", "SA_TooDifficult_Top", 
+                          "SA_TooMuchEffort_Top", "SA_LowEffectLearn_Top", "SA_LowEfficacy2_Top", "SA_Boring_Top", 
+                          "SA_Nervous_Top", "SA_Other_Top"), mean, na.rm = TRUE) %>%
+    tidyr::gather(TopBarrier, Prop, c("SA_LowEfficacy1_Top", "SA_NoTime_Top", "SA_LowEffectPerf_Top",
+                                   "SA_TooDifficult_Top", "SA_TooMuchEffort_Top", "SA_LowEffectLearn_Top",
+                                   "SA_LowEfficacy2_Top", "SA_Boring_Top", "SA_Nervous_Top", "SA_Other_Top")) 
+                          # gather(new key column name, new value column name, selected columns)
+PropofTopBarriers_A <- arrange(PropofTopBarriers_A, desc(Prop))
+PropofTopBarriers_A
+
+# phi-coefficient (equivalent to correlation)
+corr.test(Study1[c("SA_LowEfficacy1_Top", "SA_NoTime_Top", "SA_LowEffectPerf_Top", "SA_TooDifficult_Top",
+                   "SA_TooMuchEffort_Top", "SA_LowEffectLearn_Top", "SA_LowEfficacy2_Top", "SA_Boring_Top",
+                   "SA_Nervous_Top", "SA_Other_Top")]) # ignore the probability values
+
+# ------------ SB_WhyNotSim_Top ------------
+Study1$SB_WhyNotSim_Top = str_replace(Study1$SB_WhyNotSim_Top, "10", "0") 
+# otherwise the 1 in 10 will be mistaken as 1
+Study1$SB_WhyNotSim_Top
+Study1 <- Study1 %>%
+    mutate(SB_Other_Top = ifelse(str_detect(Study1$SB_WhyNotSim_Top, "0"), 1, 0),
+           SB_Nervous_Top = ifelse(str_detect(Study1$SB_WhyNotSim_Top, "9"), 1, 0),
+           SB_Boring_Top = ifelse(str_detect(Study1$SB_WhyNotSim_Top, "8"), 1, 0),
+           SB_LowEfficacy2_Top = ifelse(str_detect(Study1$SB_WhyNotSim_Top, "7"), 1, 0),
+           SB_LowEffectLearn_Top = ifelse(str_detect(Study1$SB_WhyNotSim_Top, "6"), 1, 0),
+           SB_TooMuchEffort_Top = ifelse(str_detect(Study1$SB_WhyNotSim_Top, "5"), 1, 0),
+           SB_TooDifficult_Top = ifelse(str_detect(Study1$SB_WhyNotSim_Top, "4"), 1, 0),
+           SB_LowEffectPerf_Top = ifelse(str_detect(Study1$SB_WhyNotSim_Top, "3"), 1, 0),
+           SB_NoTime_Top = ifelse(str_detect(Study1$SB_WhyNotSim_Top, "2"), 1, 0),
+           SB_LowEfficacy1_Top = ifelse(str_detect(Study1$SB_WhyNotSim_Top, "1"), 1, 0))
+
+# proportions
+PropofTopBarriers_B <- Study1 %>%
+    dplyr::summarize_at(c("SB_LowEfficacy1_Top", "SB_NoTime_Top", "SB_LowEffectPerf_Top", "SB_TooDifficult_Top", 
+                          "SB_TooMuchEffort_Top", "SB_LowEffectLearn_Top", "SB_LowEfficacy2_Top", "SB_Boring_Top", 
+                          "SB_Nervous_Top", "SB_Other_Top"), mean, na.rm = TRUE) %>%
+    tidyr::gather(TopBarrier, Prop, c("SB_LowEfficacy1_Top", "SB_NoTime_Top", "SB_LowEffectPerf_Top",
+                                   "SB_TooDifficult_Top", "SB_TooMuchEffort_Top", "SB_LowEffectLearn_Top",
+                                   "SB_LowEfficacy2_Top", "SB_Boring_Top", "SB_Nervous_Top", "SB_Other_Top")) 
+                          # gather(new key column name, new value column name, selected columns)
+PropofTopBarriers_B <- arrange(PropofTopBarriers_B, desc(Prop))
+PropofTopBarriers_B
+
+# phi-coefficient (equivalent to correlation)
+corr.test(Study1[c("SB_LowEfficacy1_Top", "SB_NoTime_Top", "SB_LowEffectPerf_Top", "SB_TooDifficult_Top",
+                   "SB_TooMuchEffort_Top", "SB_LowEffectLearn_Top", "SB_LowEfficacy2_Top", "SB_Boring_Top",
+                   "SB_Nervous_Top", "SB_Other_Top")]) # ignore the probability values
+
+# ------ SC_WhyNotSim_Top ------
+Study1$SC_WhyNotSim_Top = str_replace(Study1$SC_WhyNotSim_Top, "10", "0") 
+# otherwise the 1 in 10 will be mistaken as 1
+Study1$SC_WhyNotSim_Top
+Study1 <- Study1 %>%
+    mutate(SC_Other_Top = ifelse(str_detect(Study1$SC_WhyNotSim_Top, "0"), 1, 0),
+           SC_Nervous_Top = ifelse(str_detect(Study1$SC_WhyNotSim_Top, "9"), 1, 0),
+           SC_Boring_Top = ifelse(str_detect(Study1$SC_WhyNotSim_Top, "8"), 1, 0),
+           SC_LowEfficacy2_Top = ifelse(str_detect(Study1$SC_WhyNotSim_Top, "7"), 1, 0),
+           SC_LowEffectLearn_Top = ifelse(str_detect(Study1$SC_WhyNotSim_Top, "6"), 1, 0),
+           SC_TooMuchEffort_Top = ifelse(str_detect(Study1$SC_WhyNotSim_Top, "5"), 1, 0),
+           SC_TooDifficult_Top = ifelse(str_detect(Study1$SC_WhyNotSim_Top, "4"), 1, 0),
+           SC_LowEffectPerf_Top = ifelse(str_detect(Study1$SC_WhyNotSim_Top, "3"), 1, 0),
+           SC_NoTime_Top = ifelse(str_detect(Study1$SC_WhyNotSim_Top, "2"), 1, 0),
+           SC_LowEfficacy1_Top = ifelse(str_detect(Study1$SC_WhyNotSim_Top, "1"), 1, 0))
+
+# proportions
+PropofTopBarriers_C <- Study1 %>%
+    dplyr::summarize_at(c("SC_LowEfficacy1_Top", "SC_NoTime_Top", "SC_LowEffectPerf_Top", "SC_TooDifficult_Top", 
+                          "SC_TooMuchEffort_Top", "SC_LowEffectLearn_Top", "SC_LowEfficacy2_Top", "SC_Boring_Top", 
+                          "SC_Nervous_Top", "SC_Other_Top"), mean, na.rm = TRUE) %>%
+    tidyr::gather(TopBarrier, Prop, c("SC_LowEfficacy1_Top", "SC_NoTime_Top", "SC_LowEffectPerf_Top",
+                                   "SC_TooDifficult_Top", "SC_TooMuchEffort_Top", "SC_LowEffectLearn_Top",
+                                   "SC_LowEfficacy2_Top", "SC_Boring_Top", "SC_Nervous_Top", "SC_Other_Top")) 
+                          # gather(new key column name, new value column name, selected columns)
+PropofTopBarriers_C <- arrange(PropofTopBarriers_C, desc(Prop))
+PropofTopBarriers_C
+
+# phi-coefficient (equivalent to correlation)
+corr.test(Study1[c("SC_LowEfficacy1_Top", "SC_NoTime_Top", "SC_LowEffectPerf_Top", "SC_TooDifficult_Top",
+                   "SC_TooMuchEffort_Top", "SC_LowEffectLearn_Top", "SC_LowEfficacy2_Top", "SC_Boring_Top",
+                   "SC_Nervous_Top", "SC_Other_Top")]) # ignore the probability values
+
+
+```
+
+```{r AMK & cost (barriers) graph}
+# ------ A ------
+PropofBarriers_A_Combo
+PropofBarriers_A_Combo <- PropofBarriers_A_Combo %>%
+    mutate(BarrierPrint = c("Time cost", "Effort cost", "Low self-efficacy", "Low effectiveness", 
+                            "Psychological cost: Nervous", "Psychological cost: Boring", "Psychological cost: Difficult",
+                            "Other")) 
+PropofBarriers_A_Combo
+PropofBarriers_A_Combo$BarrierPrint <- factor(PropofBarriers_A_Combo$BarrierPrint,
+                                              levels = c("Other", "Psychological cost: Difficult", "Psychological cost: Boring", "Psychological cost: Nervous", "Low effectiveness", "Low self-efficacy", "Effort cost", "Time cost"))
+PropofBarriers_A_Combo
+
+A_PropofBarriersGraph <- ggplot(data = PropofBarriers_A_Combo, aes(x = BarrierPrint, y = Prop, fill = factor(Prop))) +
+    geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+    scale_fill_grey(start = 0.80, end = 0.15) +
+    geom_text(aes(label=format(round(Prop, digits = 2), nsmall = 2)), hjust = -0.2,
+              color="black", size = 3.5, position = position_dodge(0.9)) +
+    scale_y_continuous(expand = c(0, 0), breaks = seq(0.00, 0.80, 0.20), limits = c(0.00, 0.85)) + 
+    labs(title = "Barriers to Using Active Strategies",
+         x = "Barriers",
+         y = "Proportions (0-1)") +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          plot.title=element_text(size = 10, face = "bold"),
+          axis.title=element_text(size = 10),
+          axis.title.y = element_blank(),
+          axis.text=element_text(size = 10),
+          axis.text.x = element_text(color = "black"),
+          axis.text.y = element_text(color = "black")) + 
+    coord_flip()
+A_PropofBarriersGraph
+#ggsave("PropofBarriers_A_Combo_20211005.pdf", width = 6, height = 3, dpi = 600)
+
+# ------ B ------
+PropofBarriers_B_Combo
+PropofBarriers_B_Combo <- PropofBarriers_B_Combo %>%
+    mutate(BarrierPrint = c("Psychological cost: Boring", "Low effectiveness", "Time cost", "Psychological cost: Nervous", "Low self-efficacy", "Effort cost", "Psychological cost: Difficult", "Other")) 
+PropofBarriers_B_Combo
+PropofBarriers_B_Combo$BarrierPrint <- factor(PropofBarriers_B_Combo$BarrierPrint,
+                                              levels = c("Other", "Psychological cost: Difficult", "Effort cost", "Low self-efficacy", "Psychological cost: Nervous", "Time cost", "Low effectiveness", "Psychological cost: Boring"))
+PropofBarriers_B_Combo
+
+B_PropofBarriersGraph <- ggplot(data = PropofBarriers_B_Combo, aes(x = BarrierPrint, y = Prop, fill = factor(Prop))) +
+    geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+    scale_fill_grey(start = 0.8, end = 0.2) +
+    geom_text(aes(label=format(round(Prop, digits = 2), nsmall = 2)), hjust = -0.2,
+              color="black", size = 3.5, position = position_dodge(0.9)) +
+    scale_y_continuous(expand = c(0, 0), breaks = seq(0.00, 0.80, 0.20), limits = c(0.00, 0.85)) + 
+    labs(title = "Barriers to Using Passive Strategies",
+         x = "Barriers",
+         y = "Proportions (0-1)") +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          plot.title=element_text(size = 10, face = "bold"),
+          axis.title=element_text(size = 10),
+          axis.title.y = element_blank(),
+          axis.text=element_text(size = 10),
+          axis.text.x = element_text(color = "black"),
+          axis.text.y = element_text(color = "black")) + 
+    coord_flip()
+B_PropofBarriersGraph
+#ggsave("PropofBarriers_B_Combo_20211005.pdf", width = 6, height = 3, dpi = 600)
+
+# ------ C ------
+PropofBarriers_C_Combo
+PropofBarriers_C_Combo <- PropofBarriers_C_Combo %>%
+    mutate(BarrierPrint = c("Low self-efficacy", "Psychological cost: Nervous", "Low effectiveness", "Effort cost", "Time cost", "Psychological cost: Difficult", "Psychological cost: Boring", "Other")) 
+PropofBarriers_C_Combo
+PropofBarriers_C_Combo$BarrierPrint <- factor(PropofBarriers_C_Combo$BarrierPrint,
+                                              levels = c("Other", "Psychological cost: Boring", "Psychological cost: Difficult", "Time cost", "Effort cost", "Low effectiveness", "Psychological cost: Nervous", "Low self-efficacy"))
+PropofBarriers_C_Combo
+
+C_PropofBarriersGraph <- ggplot(data = PropofBarriers_C_Combo, aes(x = BarrierPrint, y = Prop, fill = factor(Prop))) +
+    geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+    scale_fill_grey(start = 0.8, end = 0.2) +
+    geom_text(aes(label=format(round(Prop, digits = 2), nsmall = 2)), hjust = -0.2,
+              color="black", size = 3.5, position = position_dodge(0.9)) +
+    scale_y_continuous(expand = c(0, 0), breaks = seq(0.00, 0.80, 0.20), limits = c(0.00, 0.85)) + 
+    labs(title = "Barriers to Using Monitoring Strategies",
+         x = "Barriers",
+         y = "Proportions (0-1)") +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          plot.title=element_text(size = 10, face = "bold"),
+          axis.title=element_text(size = 10),
+          axis.title.y = element_blank(),
+          axis.text=element_text(size = 10),
+          axis.text.x = element_text(color = "black"),
+          axis.text.y = element_text(color = "black")) + 
+    coord_flip()
+C_PropofBarriersGraph
+#ggsave("PropofBarriers_C_Combo_20211005.pdf", width = 6, height = 3, dpi = 600)
+
+# ------ putting them together ------
+ggarrange(A_PropofBarriersGraph, B_PropofBarriersGraph, C_PropofBarriersGraph,
+          ncol = 1, nrow = 3)
+ggsave("PropofBarriers_Combo_20211005.png", width = 6, height = 8, dpi = 600)
+```
+
+
+```{r EFA for MB}
+# effort beliefs-more effort less ability (unproductive): EB_1, EB_2
+# beliefs about failure-failure inhibits learning and performance (unproductive): BaF_1, BaF_2
+# diff as importance (productive): IoD_1-4
+# diff as impossibility (unproductive): IoD_5-8
+# theory of intelligence-fixed (unproductive): TOI_1, TOI_2
+# on a scale from 1 to 7
+
+# ------ EFA for MB 14 items ------
+EFA_MB <- fa.parallel(Study1[c("EB_1", "EB_2", "BaF_1", "BaF_2", "IoD_1", "IoD_2", "IoD_3", "IoD_4", "IoD_5", "IoD_6", "IoD_7", "IoD_8", "TOI_1", "TOI_2")], fa = "fa") # fm = "minres" is default 
+# nparallel: 4 factors
+Eigen_EFA_MB <- nScree(Study1[c("EB_1", "EB_2", "BaF_1", "BaF_2", "IoD_1", "IoD_2", "IoD_3", "IoD_4", "IoD_5", "IoD_6", "IoD_7", "IoD_8", "TOI_1", "TOI_2")], model="factors") 
+Eigen_EFA_MB
+# noc: 3, naf: 1, nparallel: 3, nkaiser: 3
+plot(Eigen_EFA_MB)
+
+# 4 factors
+EFA4_MB = fa(Study1[c("EB_1", "EB_2", "BaF_1", "BaF_2", "IoD_1", "IoD_2", "IoD_3", "IoD_4", "IoD_5", "IoD_6", "IoD_7", "IoD_8", "TOI_1", "TOI_2")], nfactors = 4) # fm = "minres" and rotate = "oblimin" are default
+print(EFA4_MB$loadings, cutoff = 0.3) # pattern matrix
+# !!EB2, fixed; failure; DiffImport; DiffImposs. EB1 & EB2 loadings on failure factor lower than 0.3
+EFA4_MB
+# 3 factors
+EFA3_MB = fa(Study1[c("EB_1", "EB_2", "BaF_1", "BaF_2", "IoD_1", "IoD_2", "IoD_3", "IoD_4", "IoD_5", "IoD_6", "IoD_7", "IoD_8", "TOI_1", "TOI_2")], nfactors = 3) # fm = "minres" and rotate = "oblimin" are default
+print(EFA3_MB$loadings, cutoff = 0.3) # pattern matrix
+# !!EB, failure, DiffImposs; DiffImport; fixed. EB2 also loads on fixed factor
+EFA3_MB
+
+# ------ EFA for MB 13 items ------
+# without EB_2
+EFA_MB13 <- fa.parallel(Study1[c("EB_1", "BaF_1", "BaF_2", "IoD_1", "IoD_2", "IoD_3", "IoD_4", "IoD_5", "IoD_6", "IoD_7", "IoD_8", "TOI_1", "TOI_2")], fa = "fa") # fm = "minres" is default 
+# nparallel: 4 factors
+Eigen_EFA_MB13 <- nScree(Study1[c("EB_1", "BaF_1", "BaF_2", "IoD_1", "IoD_2", "IoD_3", "IoD_4", "IoD_5", "IoD_6", "IoD_7", "IoD_8", "TOI_1", "TOI_2")], model="factors")
+Eigen_EFA_MB13
+# noc: 3, naf: 1, nparallel: 3, nkaiser: 3
+plot(Eigen_EFA_MB13)
+
+# 4 factors
+EFA4_MB13 = fa(Study1[c("EB_1", "BaF_1", "BaF_2", "IoD_1", "IoD_2", "IoD_3", "IoD_4", "IoD_5", "IoD_6", "IoD_7", "IoD_8", "TOI_1", "TOI_2")], nfactors = 4) # fm = "minres" and rotate = "oblimin" are default
+print(EFA4_MB13$loadings, cutoff = 0.3) # pattern matrix
+# !!EB1, diffImposs; failure; DiffImport; fixed.
+EFA4_MB13 
+# 3 factors
+EFA3_MB13 = fa(Study1[c("EB_1", "BaF_1", "BaF_2", "IoD_1", "IoD_2", "IoD_3", "IoD_4", "IoD_5", "IoD_6", "IoD_7", "IoD_8", "TOI_1", "TOI_2")], nfactors = 3) # fm = "minres" and rotate = "oblimin" are default
+print(EFA3_MB13$loadings, cutoff = 0.3) # pattern matrix
+# !!EB1, failure, DiffImposs; DiffImport; fixed. 
+EFA3_MB13 
+
+Study1 <- Study1 %>%
+    mutate(impossBelief = (EB_1 + BaF_1 + BaF_2 + IoD_5 + IoD_6 + IoD_7 + IoD_8)/7,
+           diffImport = (IoD_1 + IoD_2 + IoD_3 + IoD_4)/4,
+           fixed = (TOI_1 + TOI_2)/2)
+
+# cronbach's alpha
+alpha_impossBelief <- psych::alpha(Study1[c("EB_1", "BaF_1", "BaF_2", "IoD_5", "IoD_6", "IoD_7", "IoD_8")])
+alpha_impossBelief # 0.86
+alpha_diffImport <- psych::alpha(Study1[c("IoD_1", "IoD_2", "IoD_3", "IoD_4")])
+alpha_diffImport # 0.87
+alpha_fixed <- psych::alpha(Study1[c("TOI_1", "TOI_2")])
+alpha_fixed # 0.90
+
+# correlation
+MBfactors_corr <- Study1[c("impossBelief", "diffImport", "fixed")]
+chart.Correlation(MBfactors_corr, histogram = FALSE)
+
+# ------ descriptives for MB factors ------
+MBfactors_desc <- Study1 %>%
+    summarize_at(vars(impossBelief, diffImport, fixed), 
+                 funs(num = sum(!is.na(.)), mean, sd), na.rm = TRUE) %>%
+    mutate_if(is.numeric, round, digits = 2)
+MBfactors_desc
+# impossBelief 3.46 (1.24), diffImport 4.89 (1.15), fixed 2.97 (1.65), n = 528 for all
+```
+
+
+```{r exploratory}
+# ------ cost ~ MB ------
+# https://stats.idre.ucla.edu/r/dae/logit-regression/
+# SA_NoTime
+NoTime_MB_A <- glm(SA_NoTime ~ scale(impossBelief) + scale(diffImport) + scale(fixed), 
+                   data = Study1, family = "binomial")
+summary(NoTime_MB_A)
+# b is change in log odds of 1 vs. 0 per sd increase in predictor variable
+# impossBelief -0.18 ~ opposite direction
+NoTime_MB_A$df.null # n = df + 1 = 528
+with(NoTime_MB_A, null.deviance - deviance) # 8.68
+with(NoTime_MB_A, df.null - df.residual) # 3
+with(NoTime_MB_A, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE)) # p = 0.03
+
+# SA_TooMuchEffort
+TooMuchEffort_MB_A <- glm(SA_TooMuchEffort ~ scale(impossBelief) + scale(diffImport) + scale(fixed), 
+                   data = Study1, family = "binomial")
+summary(TooMuchEffort_MB_A)
+# diffImport -0.34 ***
+TooMuchEffort_MB_A$df.null
+with(TooMuchEffort_MB_A, null.deviance - deviance) # 13.13
+with(TooMuchEffort_MB_A, df.null - df.residual) # 3
+with(TooMuchEffort_MB_A, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE)) # p = 0.004
+
+# SA_Nervous
+Nervous_MB_A <- glm(SA_Nervous ~ scale(impossBelief) + scale(diffImport) + scale(fixed), 
+                   data = Study1, family = "binomial")
+summary(Nervous_MB_A)
+# impossBelief 0.50 ***
+# fixed -0.26 ~ opposite direction
+Nervous_MB_A$df.null
+with(Nervous_MB_A, null.deviance - deviance) # 11.81
+with(Nervous_MB_A, df.null - df.residual) # 3
+with(Nervous_MB_A, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE)) # p = 0.008
+
+# SA_Boring
+Boring_MB_A <- glm(SA_Boring ~ scale(impossBelief) + scale(diffImport) + scale(fixed), 
+                   data = Study1, family = "binomial")
+summary(Boring_MB_A)
+# diffImport -0.31 *
+Boring_MB_A$df.null
+with(Boring_MB_A, null.deviance - deviance) # 6.25
+with(Boring_MB_A, df.null - df.residual) # 3
+with(Boring_MB_A, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE)) # p = 0.10
+
+# SA_TooDifficult
+TooDifficult_MB_A <- glm(SA_TooDifficult ~ scale(impossBelief) + scale(diffImport) + scale(fixed), 
+                   data = Study1, family = "binomial")
+summary(TooDifficult_MB_A)
+# impossBelief 0.44 *
+TooDifficult_MB_A$df.null
+with(TooDifficult_MB_A, null.deviance - deviance) # 16.60
+with(TooDifficult_MB_A, df.null - df.residual) # 3
+with(TooDifficult_MB_A, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE)) # p < 0.001
+
+# ------ cost & MB correlations ------
+names(Study1)
+corr.test(Study1[, c("SA_NoTime", "SA_TooMuchEffort", "SA_Nervous", "SA_Boring", "SA_TooDifficult", "impossBelief", "diffImport", "fixed")])
+cor_SAPC_MB <- Study1[c("SA_NoTime", "SA_TooMuchEffort", "SA_Nervous", "SA_Boring", "SA_TooDifficult", "impossBelief", "diffImport", "fixed")]
+chart.Correlation(cor_SAPC_MB, histogram = FALSE)
+```

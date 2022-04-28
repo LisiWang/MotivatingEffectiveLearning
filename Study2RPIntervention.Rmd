@@ -1,0 +1,2618 @@
+---
+title: "Study2 RP Intervention"
+author: "Lisi Wang"
+date: "4/16/2021"
+output: html_document
+---
+
+```{r setup}
+library(car)
+library(corrplot)
+library(effsize)
+library(ggpubr)
+library(Hmisc)
+library(irr)
+library(jtools)
+library(lavaan)
+library(nFactors)
+library(PerformanceAnalytics)
+library(psych)
+library(rstatix)
+library(semTools)
+library(sjPlot)
+library(stats)
+library(tidyverse)
+
+getwd()
+# removed 1st and 2nd rows so it doesn't mess up all the data types
+RP_Psych_I <- read.csv("RPIntervention1_Psych_20210415.csv")
+head(RP_Psych_I)
+str(RP_Psych_I) # check if data types are correct
+names(RP_Psych_I)
+
+RP_Psych_D <- read.csv("RPIntervention2_Psych_20210503.csv")
+head(RP_Psych_D)
+str(RP_Psych_D) # check if data types are correct
+names(RP_Psych_D)
+
+RP_EDP_I <- read.csv("RPIntervention1_EDP_20210415.csv")
+head(RP_EDP_I)
+str(RP_EDP_I) # check if data types are correct
+names(RP_EDP_I)
+
+RP_EDP_D <- read.csv("RPIntervention2_EDP_20210427.csv")
+head(RP_EDP_D)
+str(RP_EDP_D) # check if data types are correct
+names(RP_EDP_D)
+
+RP_AMK_OE_LW <- read.csv("AMKOE_LW_20210727_simplified.csv")
+head(RP_AMK_OE_LW)
+str(RP_AMK_OE_LW)
+names(RP_AMK_OE_LW)
+
+RP_AMK_OE_AU <- read.csv("AMKOE_AU_20210811_simplified.csv")
+head(RP_AMK_OE_AU)
+str(RP_AMK_OE_AU)
+names(RP_AMK_OE_AU)
+
+# these are the new ones
+AMKOE_LW <- read.csv("AMKOE_LW_20211115.csv")
+head(AMKOE_LW)
+str(AMKOE_LW)
+names(AMKOE_LW)
+
+AMKOE_ST <- read.csv("AMKOE_ST_20211115.csv")
+head(AMKOE_ST)
+str(AMKOE_ST)
+names(AMKOE_ST)
+
+AMKOE <- read.csv("AMKOE_20211129.csv")
+head(AMKOE)
+str(AMKOE)
+names(AMKOE)
+```
+
+
+```{r data cleaning}
+# ------ Psych_I ------
+# remove test rows (as indicated by date)
+RP_Psych_I <- RP_Psych_I[-c(1:3),]
+head(RP_Psych_I)
+# select those who consented and finished
+RP_Psych_I <- subset(RP_Psych_I, Finished == 1 & consent == 1)
+RP_Psych_I$Finished
+RP_Psych_I$consent
+# remove duplicated ids, this methods removes the second entry
+RP_Psych_I <- RP_Psych_I[!duplicated(RP_Psych_I$id), ]
+RP_Psych_I$id # 151 pps had unique & valid responses
+# remove 1st to 20th columns (including UT_EID_4 and email_4)
+# remove 21, 22, 24, 26, 27, 29
+names(RP_Psych_I)
+RP_Psych_I <- RP_Psych_I[-c(1:20, 21, 22, 24, 26, 27, 29)]
+names(RP_Psych_I)
+
+# subset each condition
+RP_Psych_I_E <- subset(RP_Psych_I, Condition == "Everything")
+nrow(RP_Psych_I_E) # 74 pps
+RP_Psych_I_E$Condition
+RP_Psych_I_C <- subset(RP_Psych_I, Condition == "Control")
+nrow(RP_Psych_I_C) # 77 pps
+# create a new variable that identifies individuals with conditions
+RP_Psych_I_E <- tibble::rowid_to_column(RP_Psych_I_E, "condition_id") # row id as column
+RP_Psych_I_E$condition_id
+RP_Psych_I_C <- tibble::rowid_to_column(RP_Psych_I_C, "condition_id") # row id as column
+RP_Psych_I_C$condition_id
+# combine the two subsets
+RP_Psych_I <- bind_rows(RP_Psych_I_E, RP_Psych_I_C)
+nrow(RP_Psych_I) # 151 pps
+RP_Psych_I$condition_id
+
+# create a new variable that indicates time
+RP_Psych_I <- RP_Psych_I %>%
+    mutate(immediate = "Y")
+
+# ------ Psych_D ------
+# remove test rows (as indicated by date)
+RP_Psych_D <- RP_Psych_D[-c(1:5),]
+head(RP_Psych_D)
+# select those who finished with valid external reference
+RP_Psych_D <- subset(RP_Psych_D, Finished == 1 & ExternalReference != "")
+RP_Psych_D$Finished
+RP_Psych_D$ExternalReference
+# remove duplicated ids, this methods removes the second entry
+RP_Psych_D <- RP_Psych_D[!duplicated(RP_Psych_D$id), ]
+RP_Psych_D$id # 107 pps had unique & valid responses
+# remove 1st to 17th & 45th to 47th columns
+names(RP_Psych_D)
+RP_Psych_D <- RP_Psych_D[-c(1:17, 45:47)]
+names(RP_Psych_D)
+# rename columns for the purpose of combining immediate and delayed datasets
+RP_Psych_D <- RP_Psych_D %>%
+    rename(TMK_1_D = TMK_1,
+           TMK_2_D = TMK_2,
+           TMK_3_D = TMK_3,
+           TMK_4_D = TMK_4,
+           TMK_5_D = TMK_5,
+           AMK_OE_D = AMK_OE,
+           AMK_1_D = AMK_1,
+           AMK_2_D = AMK_2,
+           AMK_3_D = AMK_3,
+           time_1_D = time_1,
+           time_2_D = time_2,
+           time_3_D = time_3,
+           time_4_D = time_4,
+           effort_1_D = effort_1,
+           effort_2_D = effort_2,
+           effort_3_D = effort_3,
+           effort_4_D = effort_4,
+           effort_5_D = effort_5,
+           use_commit_D = use_commit,
+           use_frequency_D = use_frequency,
+           use_reread_D = use_reread,
+           use_highlight_D = use_highlight,
+           use_flashcards_D = use_flashcards,
+           use_notes_D = use_notes,
+           use_practice_D = use_practice,
+           use_recall_D = use_recall)
+names(RP_Psych_D)
+
+# create a new variable that indicates time
+RP_Psych_D <- RP_Psych_D %>%
+    mutate(delayed = "Y")
+
+# ------ Psych: Psych_I + Psych_D ------
+RP_Psych <- dplyr::left_join(RP_Psych_I, RP_Psych_D, by = "id") %>% # this method searches within ids from RP_Psych_I
+    dplyr::mutate(Pool = "Psych")
+names(RP_Psych)
+RP_Psych$Pool
+
+# ------ EDP_I ------
+# no need to remove test rows (because tested on Psych)
+# select those who consented and finished
+RP_EDP_I <- subset(RP_EDP_I, Finished == 1 & consent == 1)
+RP_EDP_I$Finished
+RP_EDP_I$consent
+# remove duplicated ids, this methods removes the second entry
+RP_EDP_I <- RP_EDP_I[!duplicated(RP_EDP_I$id), ]
+RP_EDP_I$id # 235 pps had unique & valid responses
+# remove 1st to 20th columns (including UT_EID_4 and email_4)
+# remove 21, 22, 24, 26, 27, 29
+names(RP_EDP_I)
+RP_EDP_I <- RP_EDP_I[-c(1:20, 21, 22, 24, 26, 27, 29)]
+names(RP_EDP_I)
+
+# subset each condition
+RP_EDP_I_E <- subset(RP_EDP_I, Condition == "Everything")
+nrow(RP_EDP_I_E) # 117 pps
+RP_EDP_I_C <- subset(RP_EDP_I, Condition == "Control")
+nrow(RP_EDP_I_C) # 118 pps
+# create a new variable that identifies individuals with conditions
+RP_EDP_I_E <- tibble::rowid_to_column(RP_EDP_I_E, "condition_id") # row id as column
+RP_EDP_I_E$condition_id
+RP_EDP_I_C <- tibble::rowid_to_column(RP_EDP_I_C, "condition_id") # row id as column
+RP_EDP_I_C$condition_id
+# combine the two subsets
+RP_EDP_I <- bind_rows(RP_EDP_I_E, RP_EDP_I_C)
+nrow(RP_EDP_I) # 235 pps
+RP_EDP_I$condition_id
+
+# create a new variable that indicates time
+RP_EDP_I <- RP_EDP_I %>%
+    mutate(immediate = "Y")
+
+# ------ EDP_D ------
+# no need to remove test rows (because tested on Psych)
+# select those who finished with valid external reference
+RP_EDP_D <- subset(RP_EDP_D, Finished == 1 & ExternalReference != "")
+RP_EDP_D$Finished
+RP_EDP_D$ExternalReference
+# remove duplicated ids, this methods removes the second entry
+RP_EDP_D <- RP_EDP_D[!duplicated(RP_EDP_D$id), ]
+RP_EDP_D$id # 173 pps had unique & valid responses
+# remove 1st to 17th & 45th to 47th columns
+names(RP_EDP_D)
+RP_EDP_D <- RP_EDP_D[-c(1:17, 45:47)]
+names(RP_EDP_D)
+# rename columns for the purpose of combining immediate and delayed datasets
+RP_EDP_D <- RP_EDP_D %>%
+    rename(TMK_1_D = TMK_1,
+           TMK_2_D = TMK_2,
+           TMK_3_D = TMK_3,
+           TMK_4_D = TMK_4,
+           TMK_5_D = TMK_5,
+           AMK_OE_D = AMK_OE,
+           AMK_1_D = AMK_1,
+           AMK_2_D = AMK_2,
+           AMK_3_D = AMK_3,
+           time_1_D = time_1,
+           time_2_D = time_2,
+           time_3_D = time_3,
+           time_4_D = time_4,
+           effort_1_D = effort_1,
+           effort_2_D = effort_2,
+           effort_3_D = effort_3,
+           effort_4_D = effort_4,
+           effort_5_D = effort_5,
+           use_commit_D = use_commit,
+           use_frequency_D = use_frequency,
+           use_reread_D = use_reread,
+           use_highlight_D = use_highlight,
+           use_flashcards_D = use_flashcards,
+           use_notes_D = use_notes,
+           use_practice_D = use_practice,
+           use_recall_D = use_recall)
+names(RP_EDP_D)
+
+# create a new variable that indicates time
+RP_EDP_D <- RP_EDP_D %>%
+    mutate(delayed = "Y")
+
+# ------ EDP: EDP_I + EDP_D ------
+RP_EDP <- dplyr::left_join(RP_EDP_I, RP_EDP_D, by = "id") %>% # this method searches within ids from RP_EDP_I
+    dplyr::mutate(Pool = "EDP")
+names(RP_EDP)
+RP_EDP$Pool
+
+# ------ RP: EDP + Psych ------
+RP <- dplyr::union(RP_Psych, RP_EDP)
+# write.csv(RP, "RP.csv", row.names = FALSE) # visually inspected data and there was no pp with a lot of NAs
+
+# subset each condition
+RP_E <- subset(RP, Condition == "Everything")
+nrow(RP_E) # 191 pps
+RP_C <- subset(RP, Condition == "Control")
+nrow(RP_C) # 195 pps
+# create a new variable that identifies individuals with conditions
+RP_E <- tibble::rowid_to_column(RP_E, "condition_id_all") # row id as column
+RP_E$condition_id_all
+RP_C <- tibble::rowid_to_column(RP_C, "condition_id_all") # row id as column
+RP_C$condition_id_all
+# combine the two subsets
+RP <- bind_rows(RP_E, RP_C)
+nrow(RP) # 386 pps
+RP$condition_id_all
+# order the variable Condition so "Control" becomes the baseline
+RP$Condition <- as.factor(RP$Condition)
+str(RP$Condition)
+RP$Condition <- relevel(RP$Condition, ref = "Control")
+str(RP$Condition)
+# revise the variable that indicates time
+RP$immediate
+RP$delayed
+RP <- RP %>%
+    mutate(delayed = ifelse(is.na(delayed) == FALSE, "Y", "N"))
+RP$delayed
+table(RP$delayed) # 280 pps
+
+table(RP$Condition)
+prop.table(table(RP$Condition))
+# delayed only
+table(RP[RP$delayed == "Y",]$Condition)
+prop.table(table(RP[RP$delayed == "Y",]$Condition))
+
+# ------ extract qual data for coding elsewhere ------
+#RP_OEDV <- RP[c("id", "careclass", "AMK_OE", "AMK_OE_D")]
+#head(RP_OEDV)
+#write.csv(RP_OEDV, "RP_OEDV.csv", row.names = FALSE)
+
+RP$Condition <- recode_factor(RP$Condition, Everything = "Experiment", Control = "Control")
+RP$Condition
+RP$Condition <- relevel(RP$Condition, ref = "Control")
+str(RP$Condition)
+```
+
+
+```{r demographics}
+# ------ age # int ------
+RP$age
+str(RP$age) # int
+mean(RP$age, na.rm = TRUE)
+sd(RP$age, na.rm = TRUE)
+# delayed only
+mean(RP[RP$delayed == "Y",]$age, na.rm = TRUE)
+sd(RP[RP$delayed == "Y",]$age, na.rm = TRUE)
+
+# ------ gender_recode # factor ------
+RP$gender
+str(RP$gender)
+RP$gender <- as.factor(RP$gender)
+levels(RP$gender)
+RP <- RP %>%
+    mutate(gender_recode = ifelse(gender == "Cisgender female" | gender == "f" | gender == "F" | 
+                                      gender == "female" | gender == "Female" | gender == "female " | 
+                                      gender == "Female " | gender == "femals" | gender == "she/her female" | 
+                                      gender == "woman" | gender == "Woman" | gender == "woman ", "F", 
+                                  ifelse(gender == "male" | gender == "Male" | gender == "male " | 
+                                             gender == "Mle", "M", 
+                                         ifelse(gender == "gender fluid " | gender == "genderfluid" | 
+                                                    gender == "non-binary" | gender == "Nonbinary", "other", NA))))
+RP$gender_recode
+RP$gender_recode <- as.factor(RP$gender_recode)
+levels(RP$gender_recode) # factor
+table(RP$gender_recode)
+prop.table(table(RP$gender_recode))
+# delayed only
+table(RP[RP$delayed == "Y",]$gender_recode)
+prop.table(table(RP[RP$delayed == "Y",]$gender_recode))
+
+# ------ URM # factor ------
+RP$ethnicity
+str(RP$ethnicity) # int
+# ethnicity_8_TEXT
+RP$ethnicity_8_TEXT # mostly mixed, one case each of South Asian and Jewish
+# 1 = Afican American or Black, 2 = American Indian or Alaska Native, 3 = Asian, 4 = Hispanic or Latino/a, 5 = Middle Eastern, 6 = Native Hawaiian or Other Pacific Islander, 7 = White or Caucasian, 8 = Other
+# URM defined as 1, 2, 4, or 6 , see https://news.utexas.edu/2020/10/06/increasing-diversity-in-academia-is-aim-of-new-alliance-with-national-science-foundation/
+RP <- RP %>%
+    mutate(URM = ifelse(ethnicity == 1 | ethnicity == 2 | ethnicity == 4 | ethnicity == 6, "URM", 
+                        ifelse(ethnicity == 3 | ethnicity == 5 | ethnicity == 7 | ethnicity == 8, "non-URM", NA)))
+RP$URM
+RP$URM <- as.factor(RP$URM)
+levels(RP$URM) # factor
+table(RP$URM)
+prop.table(table(RP$URM))
+RP$ethnicity <- as.factor(RP$ethnicity)
+table(RP$ethnicity)
+prop.table(table(RP$ethnicity))
+# delayed only
+table(RP[RP$delayed == "Y",]$URM)
+prop.table(table(RP[RP$delayed == "Y",]$URM))
+table(RP[RP$delayed == "Y",]$ethnicity)
+prop.table(table(RP[RP$delayed == "Y",]$ethnicity))
+
+# ------ firstGen # factor ------
+RP$momEd
+str(RP$momEd)
+RP$dadEd
+str(RP$dadEd)
+# 1 = Elementary or middle school, 2 = High school, 3 = Technical college, 4 = Some college, no degree, 5 = Associate's degree, 6 = Bachelor's degree, 7 = Graduate degree, 8 = NA
+# firstGen defined as neither parents has a bachelor's degree or higher (opposite is either parent has a bachelor's degree or higher), see https://firstgeneration.utexas.edu/
+RP <- RP %>%
+    mutate(firstGen = ifelse(momEd == 8 & dadEd == 8, NA, 
+                             ifelse(momEd >= 6 | dadEd >= 6, "non-firstGen", "firstGen")))
+RP$firstGen
+RP$firstGen <- as.factor(RP$firstGen)
+levels(RP$firstGen) # factor
+table(RP$firstGen)
+prop.table(table(RP$firstGen))
+# delayed only
+table(RP[RP$delayed == "Y",]$firstGen)
+prop.table(table(RP[RP$delayed == "Y",]$firstGen))
+
+# ------ grade # factor ------
+RP$grade
+# 1 = A, 2 = A-, 3 = B+, 4 = B, 5 = B-, 6 = C+, 7 = C, 8 = C-, 9 = D or lower
+RP$grade <- as.factor(RP$grade)
+levels(RP$grade) # factor
+
+# ------ GPA # num ------
+RP$GPA
+str(RP$GPA) # num
+
+# ------ SATprop # num ------
+# SAT_4
+RP$SAT_4
+str(RP$SAT_4) # int
+# SAT_5
+RP$SAT_5
+str(RP$SAT_5) # int
+RP <- RP %>%
+    mutate(SATprop = SAT_4/SAT_5)
+RP$SATprop
+str(RP$SATprop) # num
+
+# ------ courses not coded yet ------
+RP$courses
+# 1 = ALD320, 2 = EDP304, 3 = PSY301, 4 = PSY305
+# courses_other
+RP$courses_other
+```
+
+
+```{r scales}
+names(RP)
+# fa (psych) removes NAs
+# nScree (nFactors) does not remove NAs
+RP_D <- RP[RP$delayed == "Y",]
+RP_D$delayed # RP_D only used in nScree
+
+# ------ TMK Immediate (CFA) ------
+# 1 = Completely Disagree, 7 = Completely Agree, higher score supports RP
+# TMK_2 & TMK_3 are reverse scored
+RP <- RP %>%
+    mutate(TMK_2R = 8 - TMK_2,
+           TMK_3R = 8 - TMK_3)
+# look at recode in Qualtrics & range
+summary(RP[c("TMK_1", "TMK_2R", "TMK_3R", "TMK_4", "TMK_5")])
+
+# CFA, see https://lavaan.ugent.be/tutorial/cfa.html, for a more technical overview see https://stats.idre.ucla.edu/r/seminars/rcfa/
+TMK_1factor <- 'TMK_factor =~ TMK_1 + TMK_2R + TMK_3R + TMK_4 + TMK_5'
+fit_TMK_1factor <- cfa(TMK_1factor, data = RP)
+summary(fit_TMK_1factor, fit.measures = TRUE, standardized = TRUE) # n = 386
+# chi2(5) = 125.260, p < 0.001; CFI = 0.825; TLI = 0.651; RMSEA = 0.250
+inspect(fit_TMK_1factor, what = "std")
+
+# ------ TMK Delayed (CFA) ------
+# 1 = Completely Disagree, 7 = Completely Agree, higher score supports RP
+# TMK_2_D & TMK_3_D are reverse scored
+RP <- RP %>%
+    mutate(TMK_2R_D = 8 - TMK_2_D,
+           TMK_3R_D = 8 - TMK_3_D)
+# look at recode in Qualtrics & range
+summary(RP[c("TMK_1_D", "TMK_2R_D", "TMK_3R_D", "TMK_4_D", "TMK_5_D")])
+
+# CFA
+TMK_D_1factor <- 'TMK_D_factor =~ TMK_1_D + TMK_2R_D + TMK_3R_D + TMK_4_D + TMK_5_D'
+fit_TMK_D_1factor <- cfa(TMK_D_1factor, data = RP)
+summary(fit_TMK_D_1factor, fit.measures = TRUE) # n = 280
+# chi2(5) = 64.542, p < 0.001; CFI = 0.883; TLI = 0.765; RMSEA = 0.206
+inspect(fit_TMK_D_1factor, what = "std")
+
+RP <- RP %>%
+    mutate(TMK = (TMK_1 + TMK_2R + TMK_3R + TMK_4 + TMK_5)/5,
+           TMK_D = (TMK_1_D + TMK_2R_D + TMK_3R_D + TMK_4_D + TMK_5_D)/5)
+
+# ------ TMK measurement invariance ------
+TMK_model <- "
+    TMK_t1 =~ TMK_1 + TMK_2R + TMK_3R + TMK_4 + TMK_5
+    TMK_t2 =~ TMK_1_D + TMK_2R_D + TMK_3R_D + TMK_4_D + TMK_5_D
+"
+var1 <- c("TMK_1", "TMK_2", "TMK_3", "TMK_4", "TMK_5")
+var2 <- c("TMK_1_D", "TMK_2_D", "TMK_3_D", "TMK_4_D", "TMK_5_D")
+constrainedVar <- list(var1, var2)
+
+# ------ AMK Immediate (EFA just identified) ------
+# AKA df = 0 and fit indices are NAs
+# 1 = Completely Disagree, 7 = Completely Agree, higher score indicates knowing how to use RP
+# look at recode in Qualtrics & range
+summary(RP[c("AMK_1", "AMK_2", "AMK_3")]) # 1 NA in AMK_2
+RP_AMK <- RP[is.na(RP$AMK_2) == FALSE,] 
+RP_AMK$AMK_2 # n = 385, RP_AMK only used in nScree
+
+# EFA
+EFA_AMK <- fa.parallel(RP[c("AMK_1", "AMK_2", "AMK_3")], fa = "fa") # fm = "minres", nparallel: 1
+Eigen_AMK <- nScree(RP_AMK[c("AMK_1", "AMK_2", "AMK_3")], model="factors")
+Eigen_AMK
+# noc: 1, naf: 1, nparallel: 1, nkaiser: 1
+plot(Eigen_AMK)
+EFA1_AMK = fa(RP[c("AMK_1", "AMK_2", "AMK_3")], 1) # fm = "minres", rotate = "oblimin", scores = "regression"
+print(EFA1_AMK$loadings, cutoff = 0.3) # pattern matrix
+print(EFA1_AMK$Structure, cutoff = 0.3) # structure matrix
+EFA1_AMK 
+
+# ------ AMK Delayed (EFA just identified) ------
+# AKA df = 0 and fit indices are NAs
+# 1 = Completely Disagree, 7 = Completely Agree, higher score indicates knowing how to use RP
+# look at recode in Qualtrics & range
+summary(RP[c("AMK_1_D", "AMK_2_D", "AMK_3_D")]) # 106 NAs, n = 280
+
+# EFA
+EFA_AMK_D <- fa.parallel(RP[c("AMK_1_D", "AMK_2_D", "AMK_3_D")], fa = "fa") # fm = "minres", nparallel: 1
+Eigen_AMK_D <- nScree(RP_D[c("AMK_1_D", "AMK_2_D", "AMK_3_D")], model="factors")
+Eigen_AMK_D
+# noc: 1, naf: 1, nparallel: 1, nkaiser: 1
+plot(Eigen_AMK_D)
+EFA1_AMK_D = fa(RP[c("AMK_1_D", "AMK_2_D", "AMK_3_D")], 1) # fm = "minres", rotate = "oblimin", scores = "regression"
+print(EFA1_AMK_D$loadings, cutoff = 0.3) # pattern matrix
+print(EFA1_AMK_D$Structure, cutoff = 0.3) # structure matrix
+EFA1_AMK_D 
+
+RP <- RP %>%
+    mutate(AMK = (AMK_1 + AMK_2 + AMK_3)/3,
+           AMK_D = (AMK_1_D + AMK_2_D + AMK_3_D)/3)
+
+# ------ cost Immediate (EFA) ------
+# 1 = Completely Disagree, 7 = Completely Agree, higher score indicates higher cost
+# items 1-4 are about time cost, items 4-9 are about effort cost
+# look at recode in Qualtrics & range
+summary(RP[c("time_1", "time_2", "time_3", "time_4", "effort_1", "effort_2", "effort_3", "effort_4", "effort_5")]) # no NA, n = 386
+
+# EFA
+EFA_cost <- fa.parallel(RP[c("time_1", "time_2", "time_3", "time_4", "effort_1", "effort_2", "effort_3", "effort_4", "effort_5")], fa = "fa") # fm = "minres", nparallel: 1
+Eigen_cost <- nScree(RP[c("time_1", "time_2", "time_3", "time_4", "effort_1", "effort_2", "effort_3", "effort_4", "effort_5")], model = "factors")
+Eigen_cost # noc: 1, naf: 1, nparallel: 1, nkaiser: 1
+plot(Eigen_cost)
+
+EFA1_cost = fa(RP[c("time_1", "time_2", "time_3", "time_4", "effort_1", "effort_2", "effort_3", "effort_4", "effort_5")], nfactors = 1) # fm = "minres", rotate = "oblimin", scores = "regression"
+print(EFA1_cost$loadings, cutoff = 0.3) # pattern matrix
+print(EFA1_cost$Structure, cutoff = 0.3) # structure matrix
+EFA1_cost # TLI = 0.953, RMSEA = 0.083
+
+# ------ cost Delayed (EFA) ------
+# 1 = Completely Disagree, 7 = Completely Agree, higher score indicates higher cost
+# items 1-4 are about time cost, items 4-9 are about effort cost
+# look at recode in Qualtrics & range
+summary(RP[c("time_1_D", "time_2_D", "time_3_D", "time_4_D", "effort_1_D", "effort_2_D", "effort_3_D", "effort_4_D", "effort_5_D")]) # 106 NAs, n = 280
+
+# EFA
+EFA_cost_D <- fa.parallel(RP[c("time_1_D", "time_2_D", "time_3_D", "time_4_D", "effort_1_D", "effort_2_D", "effort_3_D", "effort_4_D", "effort_5_D")], fa = "fa") # fm = "minres", nparallel: 3
+Eigen_cost_D <- nScree(RP_D[c("time_1_D", "time_2_D", "time_3_D", "time_4_D", "effort_1_D", "effort_2_D", "effort_3_D", "effort_4_D", "effort_5_D")], model = "factors")
+Eigen_cost_D # noc: 1, naf: 1, nparallel: 1, nkaiser: 1
+plot(Eigen_cost_D)
+
+EFA1_cost_D = fa(RP[c("time_1_D", "time_2_D", "time_3_D", "time_4_D", "effort_1_D", "effort_2_D", "effort_3_D", "effort_4_D", "effort_5_D")], nfactors = 1) # fm = "minres", rotate = "oblimin", scores = "regression"
+print(EFA1_cost_D$loadings, cutoff = 0.3) # pattern matrix
+print(EFA1_cost_D$Structure, cutoff = 0.3) # structure matrix
+EFA1_cost_D # TLI = 0.929, RMSEA = 0.109
+
+RP <- RP %>%
+    mutate(cost = (time_1 + time_2 + time_3 + time_4 + 
+                       effort_1 + effort_2 + effort_3 + effort_4 + effort_5)/9,
+           cost_D = (time_1_D + time_2_D + time_3_D + time_4_D + 
+                       effort_1_D + effort_2_D + effort_3_D + effort_4_D + effort_5_D)/9)
+
+# ------ MB (EFA) ------
+# 1 = Not at all true, 7 = Very true
+# effort beliefs, higher score supports more effort less ability
+# failure beliefs, higher score supports failure indicates less learning and performance
+# difficulty as importance
+# difficulty as impossibility
+# theory of intelligence, higher score indicates fixed
+# look at recode in Qualtrics & range
+summary(RP[c("effortBelief_1", "effortBelief_2", "failure_1", "failure_2", "diffImport_1", "diffImport_2", "diffImport_3", "diffImport_4", "diffImposs_1", "diffImposs_2", "diffImposs_3", "diffImposs_4", "fixed_1", "fixed_2")]) # no NA, n = 386
+
+# EFA
+EFA_MB <- fa.parallel(RP[c("effortBelief_1", "effortBelief_2", "failure_1", "failure_2", "diffImport_1", "diffImport_2", "diffImport_3", "diffImport_4", "diffImposs_1", "diffImposs_2", "diffImposs_3", "diffImposs_4", "fixed_1", "fixed_2")], fa = "fa") # fm = "minres", nparallel: 4
+Eigen_MB <- nScree(RP[c("effortBelief_1", "effortBelief_2", "failure_1", "failure_2", "diffImport_1", "diffImport_2", "diffImport_3", "diffImport_4", "diffImposs_1", "diffImposs_2", "diffImposs_3", "diffImposs_4", "fixed_1", "fixed_2")], model = "factors") 
+Eigen_MB # noc: 2, naf: 1, nparallel: 2, nkaiser: 3
+plot(Eigen_MB) 
+
+EFA2_MB = fa(RP[c("effortBelief_1", "effortBelief_2", "failure_1", "failure_2", "diffImport_1", "diffImport_2", "diffImport_3", "diffImport_4", "diffImposs_1", "diffImposs_2", "diffImposs_3", "diffImposs_4", "fixed_1", "fixed_2")], nfactors = 2) # fm = "minres", rotate = "oblimin", scores = "regression"
+print(EFA2_MB$loadings, cutoff = 0.3) # pattern matrix
+print(EFA2_MB$Structure, cutoff = 0.3) # structure matrix
+# effort, failure, diffImposs, & fixed; diffImport
+EFA2_MB # TLI = 0.729, RMSEA = 0.139
+#EFA2_MB$STATISTIC # 538.5225
+#EFA2_MB$dof # 64
+#EFA2_MB$PVAL # < 0.001
+#head(EFA2_MB$scores) 
+#pairs.panels(EFA2_MB$scores)
+
+EFA3_MB = fa(RP[c("effortBelief_1", "effortBelief_2", "failure_1", "failure_2", "diffImport_1", "diffImport_2", "diffImport_3", "diffImport_4", "diffImposs_1", "diffImposs_2", "diffImposs_3", "diffImposs_4", "fixed_1", "fixed_2")], nfactors = 3) # fm = "minres", rotate = "oblimin", scores = "regression"
+print(EFA3_MB$loadings, cutoff = 0.3) # pattern matrix
+print(EFA3_MB$Structure, cutoff = 0.3) # structure matrix
+# effort, failure, diffImposs; diffImport; fixed
+EFA3_MB # TLI = 0.914, RMSEA = 0.078
+
+EFA4_MB = fa(RP[c("effortBelief_1", "effortBelief_2", "failure_1", "failure_2", "diffImport_1", "diffImport_2", "diffImport_3", "diffImport_4", "diffImposs_1", "diffImposs_2", "diffImposs_3", "diffImposs_4", "fixed_1", "fixed_2")], nfactors = 4) # fm = "minres", rotate = "oblimin", scores = "regression"
+print(EFA4_MB$loadings, cutoff = 0.3) # pattern matrix
+print(EFA4_MB$Structure, cutoff = 0.3) # structure matrix
+# effort, failure; diffImport; diffImport; fixed. effortBelief_2 also loads on fixed factor
+EFA4_MB # TLI = 0.974, RMSEA = 0.043
+# fit indices better for EFA4, but factor loadings (betas) easier for EFA3
+
+# ------ MB 13 items (EFA) ------
+EFA_MB13 <- fa.parallel(RP[c("effortBelief_1", "failure_1", "failure_2", "diffImport_1", "diffImport_2", "diffImport_3", "diffImport_4", "diffImposs_1", "diffImposs_2", "diffImposs_3", "diffImposs_4", "fixed_1", "fixed_2")], fa = "fa") # fm = "minres", nparallel: 4
+Eigen_MB13 <- nScree(RP[c("effortBelief_1", "failure_1", "failure_2", "diffImport_1", "diffImport_2", "diffImport_3", "diffImport_4", "diffImposs_1", "diffImposs_2", "diffImposs_3", "diffImposs_4", "fixed_1", "fixed_2")], model = "factors") 
+Eigen_MB13 # noc: 2, naf: 1, nparallel: 2, nkaiser: 3
+plot(Eigen_MB13) 
+
+EFA3_MB13 = fa(RP[c("effortBelief_1", "failure_1", "failure_2", "diffImport_1", "diffImport_2", "diffImport_3", "diffImport_4", "diffImposs_1", "diffImposs_2", "diffImposs_3", "diffImposs_4", "fixed_1", "fixed_2")], nfactors = 3) # fm = "minres", rotate = "oblimin", scores = "regression"
+print(EFA3_MB13$loadings, cutoff = 0.3) # pattern matrix
+print(EFA3_MB13$Structure, cutoff = 0.3) # structure matrix
+# effort, failure, diffImposs; diffImport; fixed. 
+EFA3_MB13 # TLI = 0.927, RMSEA = 0.075
+
+EFA4_MB13 = fa(RP[c("effortBelief_1", "failure_1", "failure_2", "diffImport_1", "diffImport_2", "diffImport_3", "diffImport_4", "diffImposs_1", "diffImposs_2", "diffImposs_3", "diffImposs_4", "fixed_1", "fixed_2")], nfactors = 4) # fm = "minres", rotate = "oblimin", scores = "regression"
+print(EFA4_MB13$loadings, cutoff = 0.3) # pattern matrix
+print(EFA4_MB13$Structure, cutoff = 0.3) # structure matrix
+# effort, failure; diffImport; diffImport; fixed. 
+EFA4_MB13 # TLI = 0.994, RMSEA = 0.021
+
+RP <- RP %>%
+    mutate(impossBelief = (effortBelief_1 + failure_1 + failure_2 + 
+                               diffImposs_1 + diffImposs_2 + diffImposs_3 + diffImposs_4)/7,
+           diffImport = (diffImport_1 + diffImport_2 + diffImport_3 + diffImport_4)/4,
+           fixed = (fixed_1 + fixed_2)/2)
+
+# ------ MB measurement invariance ------
+#https://towardsdatascience.com/testing-for-measurement-invariance-in-r-b44cace10148
+#https://users.ugent.be/~yrosseel/lavaan/multiplegroup6Dec2012.pdf
+# three factor CFA
+CFA3_MB13 <- "
+    impossBelief_CFA =~ effortBelief_1 + failure_1 + failure_2 + diffImposs_1 + diffImposs_2 + diffImposs_3 + diffImposs_4
+    diffImport_CFA =~ diffImport_1 + diffImport_2 + diffImport_3 + diffImport_4
+    fixed_CFA =~ fixed_1 + fixed_2
+"
+# covar between factors are estiamted by default, so no need to specify
+
+# ------ MB config invariance ------
+MB13_config <- cfa(CFA3_MB13, data = RP, group = "Condition")
+summary(MB13_config, fit.measures = TRUE, standardized = TRUE)
+# CFI = 0.948, TLI = 0.935, RMSEA = 0.073
+
+# ------ MB metric invariance ------
+MB13_metric <- cfa(CFA3_MB13, data = RP, group = "Condition", group.equal = "loadings")
+MB13_configvmetric <- compareFit(MB13_config, MB13_metric)
+summary(MB13_configvmetric)
+# chi-sq (10) = 12.367, p = 0.26
+# fewer constraints, more estimated params, fewer dfs
+# better model fit, lower chi-sq (deviation from model-implied data to observed data)
+# we know fewer constraints improve model fit, but we want the new model to be just as good as the old model (more constraints)
+summary(MB13_metric, fit.measures = TRUE, standardized = TRUE)
+
+# ------ MB scalar invariance ------
+MB13_scalar <- cfa(CFA3_MB13, data = RP, group = "Condition", group.equal = c("loadings", "intercepts"))
+MB13_metricvscalar <- compareFit(MB13_metric, MB13_scalar)
+summary(MB13_metricvscalar)
+# chi-sq (10) = 6.44, p = 0.78
+summary(MB13_scalar, fit.measures = TRUE, standardized = TRUE)
+
+# ------ MB strict invariance ------
+MB13_strict <- cfa(CFA3_MB13, data = RP, group = "Condition", group.equal = c("loadings", "intercepts", "residuals"))
+MB13_scalarvstrict <- compareFit(MB13_scalar, MB13_strict)
+summary(MB13_scalarvstrict)
+# chi-sq (13) = 47.904, p < 0.001 --> scalar invariance only
+summary(MB13_strict, fit.measures = TRUE, standardized = TRUE)
+
+# ------ commit & use Immediate ------
+# 1 = Not at all committed, 7 = Very committed
+# 1 = Never, 2 = Rarely, 3 = Sometimes, 4 = Often, 5 = Very often
+# look at recode in Qualtrics & range
+summary(RP[c("use_commit", "use_reread", "use_highlight", "use_flashcards", "use_notes", "use_practice", "use_recall")]) # no NA, n = 386
+
+# ------ commit, frequency, & use Delayed ------
+# 1 = Not at all successful, 7 = Very successful
+# 1 = Never, 2 = Rarely, 3 = Sometimes, 4 = Often, 5 = Very often
+# 1 = Never, 2 = Rarely, 3 = Sometimes, 4 = Often, 5 = Very often
+# look at recode in Qualtrics & range
+summary(RP[c("use_commit_D", "use_frequency_D", "use_reread_D", "use_highlight_D", "use_flashcards_D", "use_notes_D", "use_practice_D", "use_recall_D")]) # 106 NAs, n = 280
+
+RP <- RP %>%
+    mutate(use_nonRP = (use_reread + use_highlight)/2,
+           use_typicalRP = (use_flashcards + use_practice)/2,
+           use_generalRP = (use_notes + use_recall)/2,
+           use_RP = (use_flashcards + use_practice + use_notes + use_recall)/4,
+           use_nonRP_D = (use_reread_D + use_highlight_D)/2,
+           use_typicalRP_D = (use_flashcards_D + use_practice_D)/2,
+           use_generalRP_D = (use_notes_D + use_recall_D)/2,
+           use_RP_D = (use_flashcards_D + use_practice_D + use_notes_D + use_recall_D)/4)
+
+# ------ descriptives ------
+# by condition
+RP_condition_nmsd <- RP %>%
+    group_by(Condition) %>%
+    summarize_at(vars(TMK, AMK, cost, use_generalRP,
+                      use_commit, use_nonRP, use_typicalRP, use_RP,
+                      impossBelief, diffImport, fixed), 
+                 funs(num = sum(!is.na(.)), mean, sd), na.rm = TRUE) %>%
+    mutate_if(is.numeric, round, digits = 2)
+# "n() should only be called in a data context", not per column
+# https://sebastiansauer.github.io/sum-isna/
+RP_condition_nmsd
+
+RP_condition_nmsd_D <- RP %>%
+    group_by(Condition) %>%
+    summarize_at(vars(TMK_D, AMK_D, cost_D, use_generalRP_D,
+                      use_commit_D, use_frequency_D, use_nonRP_D, use_typicalRP_D, use_RP_D), 
+                 funs(num = sum(!is.na(.)), mean, sd), na.rm = TRUE) %>%
+    mutate_if(is.numeric, round, digits = 2)
+RP_condition_nmsd_D
+
+# overall
+RP_overall_nmsd <- RP %>%
+    summarize_at(vars(TMK, AMK, cost, use_generalRP,
+                      use_commit, use_nonRP, use_typicalRP, use_RP,
+                      impossBelief, diffImport, fixed), 
+                 funs(num = sum(!is.na(.)), mean, sd), na.rm = TRUE) %>%
+    mutate_if(is.numeric, round, digits = 2)
+RP_overall_nmsd
+
+RP_overall_nmsd_D <- RP %>%
+    summarize_at(vars(TMK_D, AMK_D, cost_D, use_generalRP_D,
+                      use_commit_D, use_frequency_D, use_nonRP_D, use_typicalRP_D, use_RP_D), 
+                 funs(num = sum(!is.na(.)), mean, sd), na.rm = TRUE) %>%
+    mutate_if(is.numeric, round, digits = 2)
+RP_overall_nmsd_D
+
+# ------ cronbach's alpha ------
+# https://stats.idre.ucla.edu/spss/faq/what-does-cronbachs-alpha-mean/
+# EFA measures dimensionality, cronbach's alpha measures internal consistency
+# TMK, AMK, cost, MB_impossBelief, diffImport, fixed
+alpha_TMK <- psych::alpha(RP[c("TMK_1", "TMK_2R", "TMK_3R", "TMK_4", "TMK_5")])
+alpha_TMK # 0.80
+alpha_AMK <- psych::alpha(RP[c("AMK_1", "AMK_2", "AMK_3")])
+alpha_AMK # 0.79
+alpha_cost <- psych::alpha(RP[c("time_1", "time_2", "time_3", "time_4", "effort_1", "effort_2", "effort_3", "effort_4", "effort_5")])
+alpha_cost # 0.92
+alpha_impossBelief <- psych::alpha(RP[c("effortBelief_1", "failure_1", "failure_2", "diffImposs_1", "diffImposs_2", "diffImposs_3", "diffImposs_4")])
+alpha_impossBelief # 0.85
+alpha_diffImport <- psych::alpha(RP[c("diffImport_1", "diffImport_2", "diffImport_3", "diffImport_4")])
+alpha_diffImport # 0.82
+alpha_fixed <- psych::alpha(RP[c("fixed_1", "fixed_2")])
+alpha_fixed # 0.90
+
+# TMK_D, AMK_D, cost_D
+alpha_TMK_D <- psych::alpha(RP[c("TMK_1_D", "TMK_2R_D", "TMK_3R_D", "TMK_4_D", "TMK_5_D")])
+alpha_TMK_D # 0.81
+alpha_AMK_D <- psych::alpha(RP[c("AMK_1_D", "AMK_2_D", "AMK_3_D")])
+alpha_AMK_D # 0.83
+alpha_cost_D <- psych::alpha(RP[c("time_1_D", "time_2_D", "time_3_D", "time_4_D", "effort_1_D", "effort_2_D", "effort_3_D", "effort_4_D", "effort_5_D")])
+alpha_cost_D # 0.93
+
+# ------ correlation matrices ------
+names(RP)
+cor_I <- RP[c("TMK", "AMK", "cost", "use_generalRP", "use_typicalRP", "use_nonRP", "impossBelief", "diffImport", "fixed")]
+chart.Correlation(cor_I, histogram = FALSE)
+# font too small
+#chart.Correlation(RP[c("AMK", "diffImport", "fixed", "use_nonRP", "use_generalRP")], histogram = FALSE)
+# get p values
+cor_I_Hmisc <- rcorr(as.matrix(cor_I))
+print(cor_I_Hmisc$r, digits = 2)
+print(cor_I_Hmisc$P, digits = 3)
+
+cor_D <- RP[c("TMK_D", "AMK_D", "cost_D", "use_generalRP_D", "use_typicalRP_D", "use_nonRP_D")]
+chart.Correlation(cor_D, histogram = FALSE)
+# font too small
+#chart.Correlation(RP[c("TMK_D", "use_frequency_D", "use_nonRP_D", "use_typicalRP_D", "use_generalRP_D")], histogram = FALSE)
+# get p values
+cor_D_Hmisc <- rcorr(as.matrix(cor_D))
+print(cor_D_Hmisc$r, digits = 2)
+print(cor_D_Hmisc$P, digits = 3)
+
+
+```
+
+
+```{r EFA & CFA notes}
+# ------ notes on EFA ------
+# https://stats.idre.ucla.edu/spss/seminars/introduction-to-factor-analysis/a-practical-introduction-to-factor-analysis/
+# total variance (1) = common variance (between items, h2) + specific variance (to observed var) + error variance
+# factor extration
+    # principal component analysis
+        # PCA assumes total = common
+        # eigen value means variance across items explained by a given PC
+        # component matrix: each cell is the corr between each item and each PC
+        # SS loadings across items = variance  explained by a given PC, AKA eigen value
+    # principle axis factoring 
+        # FA assumes total = common + specific + error, hence factors are latent
+        # eigen value means variance across items explained by a given PC
+        # factor matrix: each cell is the corr between each item and each factor
+        # SS loadings across items = variance  explained by a given factor, NOT eigen value
+    # ml, minres, etc
+        # assumes total = common + specific + error
+        # differ from principle axis factoring in iterative process
+# oblique rotation
+    # pattern matrix: betas (item ~ factors)
+    # structure matrix: correlations
+    # factor score coefficient matrix: betas (factor score ~ scale(items)) != pattern matrix
+    # regression method assumes factor scores correlated with factors  
+    # factor mean (non-refined) vs. factor score (refined), see https://doi.org/10.7275/da8t-4g52
+        # when the goal is dimension reduction, no need to treat factors as latent variables
+        # EFA (other than PCA) generally has an issue of factor indeterminacy (no unique solution)
+        # refined methods do not overcome this issue
+# simple structure
+    # each item: differential loadings across factors, only loads high on one factor
+    # each factor: only has high loadings on some factors
+# EFA model fit indices (generally used in CFA), see https://stats.stackexchange.com/questions/439653/is-there-a-standard-measure-of-fit-to-validate-exploratory-factor-analysis
+    # explanation of fa results, see https://m-clark.github.io/posts/2020-04-10-psych-explained/
+
+# ------ notes on CFA ------
+# https://stats.idre.ucla.edu/r/seminars/rcfa/#s3
+# CFA model fit indices
+    # chi2 (observed covar vs. expected covar)
+        # h0 is no diff between observed vs. expected, but sensitive to large sample size
+        # only applies to items > 3, otherwise df < 0
+    # absolute fit 
+        # RMSEA
+    # relative fit (model vs. null model with uncorrelated observed variables)
+        # CFI
+        # TLI
+
+# ------ notes on measurement invariance ------
+# configural - no constraints --> assess with fit indices
+# metric - equal factor loadings --> compare with configural using chi-squared
+# scalar - equal factor loadings & intercepts --> compare with metric using chi-squared
+# strict - equal factor loadings, intercepts, & residual variance --> compare with scalar using chi-squared, can proceed without satisfying
+
+
+# ------ notes on SEM ------
+# https://stats.idre.ucla.edu/r/seminars/rsem/
+
+# ------ notes on moderated mediation ------
+# binary moderator https://nmmichalak.github.io/nicholas_michalak/blog_entries/2018/nrg02/nrg02.html
+# mean-center IVs, because otherwise will result in collinearity
+# expand interaction into regression format: Y~Med; Y~Mod; Y~Med*Mod
+# define combination of regression coefficients
+
+# numerical moderator https://ademos.people.uic.edu/Chapter15.html#5_moderated_mediation_analyses_using_%E2%80%9Clavaan%E2%80%9D_package
+# mean-center IVs and moderators
+# how to mean center latent variables???
+
+# ------ notes on irr ------
+# each rater has own column
+# Cohen's kappa on each DV
+# intraclass correlation on total num of methods
+```
+
+
+```{r hypotheses testing}
+# ------ TMK immediate two-sided t-test ------
+# hypothesis 1 H0: no diff between experimental and control
+leveneTest(TMK ~ Condition, data = RP) # p = 0.21 --> assume equal var
+
+TMK_I_ttest <- t.test(TMK ~ Condition, var.equal = TRUE, data = RP)
+TMK_I_ttest # raw result shows control vs. experiment; t(384) = 1.56, p = 0.12
+
+TMK_I_cohend <- psych::cohen.d(x = RP$TMK, group = RP$Condition) 
+TMK_I_cohend # raw result shows experiment vs. control; 0.16
+
+# ------ TMK ANOVA ------
+TMK_D_cohend <- psych::cohen.d(x = RP$TMK_D, group = RP$Condition) 
+TMK_D_cohend
+
+# hypothesis 1 H0: no diff between experimental and control
+# see https://www.datanovia.com/en/lessons/mixed-anova-in-r/#two-way-mixed
+# gather the columns TMK & TMK_D into long format.
+TMK_df <- RP %>%
+    dplyr::select(id, Condition, TMK, TMK_D) %>%
+    rename(T1 = TMK,
+           T2 = TMK_D) %>%
+    gather(key = "time", value = "TMK_score", T1, T2) %>%
+    convert_as_factor(id, Condition, time)
+head(TMK_df)
+# double check n, m, & sd
+TMK_df %>%
+    group_by(time, Condition) %>%
+    get_summary_stats(TMK_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "Theoretical metacognitive knowledge (1-7)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+#ggsave("TMK_ANOVA.png", height = 4, width = 5, dpi = 300)
+
+# check assumption: no outliers in each cell
+TMK_df %>%
+    group_by(time, Condition) %>%
+    identify_outliers(TMK_score) # 4 outliers
+# check assumption: normality in each cell (Shapiro-Wilk test)
+TMK_df %>%
+    group_by(time, Condition) %>%
+    shapiro_test(TMK_score) # all p values less than 0.05, but test sensitive to large sample size
+# check assumption: normality in each cell (QQ plot)
+ggqqplot(TMK_df, "TMK_score", ggtheme = theme_bw()) + facet_grid(time ~ Condition) # looks okay
+# check assumption: homogeneity of variance between cells
+leveneTest(TMK_score ~ time*Condition, data = TMK_df) # p = 0.62
+# check assumption: sphericity AKA equal variance in difference between repeated measures, applies to > 2 repetitions
+
+# mixed ANOVA
+TMK_ANOVA <- anova_test(data = TMK_df, dv = TMK_score, wid = id, between = Condition, within = time, type = 3, effect.size = "pes")
+get_anova_table(TMK_ANOVA)
+# main of Condition: F(1, 278) = 0.84, p = 0.36, partial eta2 = 0.003
+# main of time: F(1, 278) = 13.14, p < 0.001***, partial eta2 = 0.045 --> TMK decreased over time
+# main of interaction: F(1, 278) = 0.94, p = 0.33, partial eta2 = 0.003
+
+# ------ AMK immediate one-sided t-test ------
+# hypothesis 2 H0: experimental > control
+leveneTest(AMK ~ Condition, data = RP) # p = 0.78 --> assume equal var
+
+AMK_I_ttest <- t.test(AMK ~ Condition, alternative = "less", var.equal = TRUE, data = RP)
+AMK_I_ttest # raw result shows control vs. experiment; t(383) = 2.14, p = 0.02*
+
+AMK_I_cohend <- psych::cohen.d(x = RP$AMK, group = RP$Condition) 
+AMK_I_cohend # raw result shows experiment vs. control; 0.22
+
+# ------ AMK ANOVA ------
+AMK_D_cohend <- psych::cohen.d(x = RP$AMK_D, group = RP$Condition) 
+AMK_D_cohend
+
+# hypothesis 2 H0: experimental > control
+# gather the columns AMK & AMK_D into long format.
+AMK_df <- RP %>%
+    dplyr::select(id, Condition, AMK, AMK_D) %>%
+    rename(T1 = AMK,
+           T2 = AMK_D) %>%
+    gather(key = "time", value = "AMK_score", T1, T2) %>%
+    convert_as_factor(id, Condition, time)
+head(AMK_df)
+# double check n, m, & sd
+
+AMK_df %>%
+    group_by(time, Condition) %>%
+    get_summary_stats(AMK_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "AMK: Self-efficacy (1-7)\n", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3.5) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3.5) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"),
+          axis.title=element_text(size = 10, face = "bold"),
+          axis.text=element_text(size = 10),
+          axis.text.x = element_text(color = "black"),
+          axis.text.y = element_text(color = "black"),
+          legend.title=element_text(size = 10, face = "bold"), 
+          legend.text=element_text(size = 10),
+          legend.position = "bottom")
+AMK_df
+ggsave("AMK_ANOVA.png", height = 4.5, width = 5, dpi = 300)
+
+# check assumption: no outliers in each cell
+AMK_df %>%
+    group_by(time, Condition) %>%
+    identify_outliers(AMK_score) # 1 outlier
+# check assumption: normality in each cell (Shapiro-Wilk test)
+AMK_df %>%
+    group_by(time, Condition) %>%
+    shapiro_test(AMK_score) # all p values less than 0.05, but test sensitive to large sample size
+# check assumption: normality in each cell (QQ plot)
+ggqqplot(AMK_df, "AMK_score", ggtheme = theme_bw()) + facet_grid(time ~ Condition) # looks okay
+# check assumption: homogeneity of variance between cells
+leveneTest(AMK_score ~ time*Condition, data = AMK_df) # p = 0.97
+# check assumption: sphericity AKA equal variance in difference between repeated measures, applies to > 2 repetitions
+
+# mixed ANOVA
+AMK_ANOVA <- anova_test(data = AMK_df, dv = AMK_score, wid = id, between = Condition, within = time, type = 3, effect.size = "pes")
+get_anova_table(AMK_ANOVA)
+# main of Condition: F(1, 277) = 1.63, p = 0.20, partial eta2 = 0.006
+# main of time: F(1, 277) = 10.33, p = 0.001**, partial eta2 = 0.036 --> AMK decreased over time
+# main of interaction: F(1, 277) = 3.20, p = 0.08, partial eta2 = 0.011
+
+# ------ cost immediate one-sided t-test ------
+# hypothesis 3 H0: experimental < control
+leveneTest(cost ~ Condition, data = RP) # p = 0.68 --> assume equal var
+
+cost_I_ttest <- t.test(cost ~ Condition, alternative = "greater", var.equal = TRUE, data = RP)
+cost_I_ttest # raw result shows control vs. experiment; t(384) = 0.01, p = 0.50
+
+cost_I_cohend <- psych::cohen.d(x = RP$cost, group = RP$Condition)
+cost_I_cohend # raw result shows experiment vs. control; 0.001
+
+# ------ cost  ANOVA ------
+cost_D_cohend <- psych::cohen.d(x = RP$cost_D, group = RP$Condition) 
+cost_D_cohend
+
+# hypothesis 3 H0: experimental < control
+# gather the columns cost & cost_D into long format.
+cost_df <- RP %>%
+    dplyr::select(id, Condition, cost, cost_D) %>%
+    rename(T1 = cost,
+           T2 = cost_D) %>%
+    gather(key = "time", value = "cost_score", T1, T2) %>%
+    convert_as_factor(id, Condition, time)
+head(cost_df)
+# double check n, m, & sd
+cost_df %>%
+    group_by(time, Condition) %>%
+    get_summary_stats(cost_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "Perceived cost in time and effort (1-7)\n", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3.5) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3.5) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"),
+          axis.title=element_text(size = 10, face = "bold"),
+          axis.text=element_text(size = 10),
+          axis.text.x = element_text(color = "black"),
+          axis.text.y = element_text(color = "black"),
+          legend.title=element_text(size = 10, face = "bold"), 
+          legend.text=element_text(size = 10),
+          legend.position = "bottom")
+ggsave("cost_ANOVA.png", height = 4.5, width = 5, dpi = 300)
+
+# check assumption: no outliers in each cell
+cost_df %>%
+    group_by(time, Condition) %>%
+    identify_outliers(cost_score) # 5 outliers
+# check assumption: normality in each cell (Shapiro-Wilk test)
+cost_df %>%
+    group_by(time, Condition) %>%
+    shapiro_test(cost_score) # all p values less than 0.05, but test sensitive to large sample size
+# check assumption: normality in each cell (QQ plot)
+ggqqplot(cost_df, "cost_score", ggtheme = theme_bw()) + facet_grid(time ~ Condition) # looks okay
+# check assumption: homogeneity of variance between cells
+leveneTest(cost_score ~ time*Condition, data = cost_df) # p = 0.76
+# check assumption: sphericity AKA equal variance in difference between repeated measures, applies to > 2 repetitions
+
+# mixed ANOVA
+cost_ANOVA <- anova_test(data = cost_df, dv = cost_score, wid = id, between = Condition, within = time, type = 3, effect.size = "pes")
+get_anova_table(cost_ANOVA)
+# main of Condition: F(1, 278) = 0.19, p = 0.66, partial eta2 < 0.001
+# main of time: F(1, 278) = 0.30, p = 0.59, partial eta2 = 0.001
+# main of interaction: F(1, 278) = 0.66, p = 0.42, partial eta2 = 0.002
+
+# ------ use_generalRP one-sided immediate t test ------
+# hypothesis 4 H0: experimental > control
+leveneTest(use_generalRP ~ Condition, data = RP) # p = 0.59 --> assume equal var
+
+use_generalRP_I_ttest <- t.test(use_generalRP ~ Condition, alternative = "less", var.equal = TRUE, data = RP)
+use_generalRP_I_ttest # raw result shows control vs. experiment; t(384) = 1.78, p = 0.04*
+
+use_generalRP_I_cohend <- psych::cohen.d(x = RP$use_generalRP, group = RP$Condition)
+use_generalRP_I_cohend # raw result shows experiment vs. control; 0.18
+
+# ------ use_generalRP immediate & delayed ANOVA ------
+use_generalRP_D_cohend <- psych::cohen.d(x = RP$use_generalRP_D, group = RP$Condition) 
+use_generalRP_D_cohend
+
+# hypothesis 4 H0: experimental > control
+# gather the columns use_generalRP & use_generalRP_D into long format.
+use_generalRP_df <- RP %>%
+    dplyr::select(id, Condition, use_generalRP, use_generalRP_D) %>%
+    rename(T1 = use_generalRP,
+           T2 = use_generalRP_D) %>%
+    gather(key = "time", value = "use_generalRP_score", T1, T2) %>%
+    convert_as_factor(id, Condition, time)
+head(use_generalRP_df)
+# double check n, m, & sd
+use_generalRP_df %>%
+    group_by(time, Condition) %>%
+    get_summary_stats(use_generalRP_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "General methods of retrieval practice (1-5)\n", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3.5) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3.5) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"),
+          axis.title=element_text(size = 10, face = "bold"),
+          axis.text=element_text(size = 10),
+          axis.text.x = element_text(color = "black"),
+          axis.text.y = element_text(color = "black"),
+          legend.title=element_text(size = 10, face = "bold"), 
+          legend.text=element_text(size = 10),
+          legend.position = "bottom")
+ggsave("usegen_ANOVA.png", height = 4.5, width = 5, dpi = 300)
+
+# check assumption: no outliers in each cell
+use_generalRP_df %>%
+    group_by(time, Condition) %>%
+    identify_outliers(use_generalRP_score) # 2 outliers
+# check assumption: normality in each cell (Shapiro-Wilk test)
+use_generalRP_df %>%
+    group_by(time, Condition) %>%
+    shapiro_test(use_generalRP_score) # all p values less than 0.05, but test sensitive to large sample size
+# check assumption: normality in each cell (QQ plot)
+ggqqplot(use_generalRP_df, "use_generalRP_score", ggtheme = theme_bw()) + facet_grid(time ~ Condition) # looks okay
+# check assumption: homogeneity of variance between cells
+leveneTest(use_generalRP_score ~ time*Condition, data = use_generalRP_df) # p = 0.13
+# check assumption: sphericity AKA equal variance in difference between repeated measures, applies to > 2 repetitions
+
+# mixed ANOVA
+use_generalRP_ANOVA <- anova_test(data = use_generalRP_df, dv = use_generalRP_score, wid = id, between = Condition, within = time, type = 3, effect.size = "pes")
+get_anova_table(use_generalRP_ANOVA)
+# main of Condition: F(1, 278) = 2.37, p = 0.13, partial eta2 = 0.008
+# main of time: F(1, 278) = 19.93, p < 0.001***, partial eta2 = 0.067 --> use_generalRP decreased over time
+# main of interaction: F(1, 278) = 0.13, p = 0.72, partial eta2 < 0.001
+
+# ------ corr between T1 & T2 ------
+cor.test(RP$TMK, RP$TMK_D,  method = "pearson", use = "complete.obs") # 0.65***
+cor.test(RP$AMK, RP$AMK_D,  method = "pearson", use = "complete.obs") # 0.63***
+cor.test(RP$cost, RP$cost_D,  method = "pearson", use = "complete.obs") # 0.67***
+cor.test(RP$use_generalRP, RP$use_generalRP_D,  method = "pearson", use = "complete.obs") # 0.41***
+```
+
+
+```{r exploratory analyses}
+# ------ commit immediate two-sided t-test ------
+# no H0
+leveneTest(use_commit ~ Condition, data = RP) # p = 0.23 --> assume equal var
+
+use_commit_I_ttest <- t.test(use_commit ~ Condition, var.equal = TRUE, data = RP)
+use_commit_I_ttest # raw result shows control vs. experiment; t(384) = -1.30, p = 0.19
+
+use_commit_I_cohend <- psych::cohen.d(x = RP$use_commit, group = RP$Condition)
+use_commit_I_cohend # raw result shows experiment vs. control; -0.13
+
+# ------ commit delayed two-sided t-test ------
+# no H0
+leveneTest(use_commit_D ~ Condition, data = RP) # p = 0.005 --> do Welch's t instead
+
+use_commit_D_Welchttest <- t.test(use_commit_D ~ Condition, data = RP)
+use_commit_D_Welchttest # raw result shows control vs. experiment; t(271.1) = 1.12, p = 0.26
+
+use_commit_D_ttest <- t.test(use_commit_D ~ Condition, var.equal = TRUE, data = RP)
+use_commit_D_ttest # raw result shows control vs. experiment; t(278) = 1.12, p = 0.26
+
+use_commit_D_cohend <- psych::cohen.d(x = RP$use_commit_D, group = RP$Condition)
+use_commit_D_cohend # raw result shows experiment vs. control; 0.13
+
+# ------ frequency delayed two-sided t-test ------
+# no H0
+leveneTest(use_frequency_D ~ Condition, data = RP) # p = 0.30 --> assume equal var
+
+use_frequency_D_ttest <- t.test(use_frequency_D ~ Condition, var.equal = TRUE, data = RP)
+use_frequency_D_ttest # raw result shows control vs. experiment; t(278) = 0.84, p = 0.40
+
+use_frequency_D_cohend <- psych::cohen.d(x = RP$use_frequency_D, group = RP$Condition)
+use_frequency_D_cohend # raw result shows experiment vs. control; 0.10
+
+# ------ use_nonRP immediate two-sided t test ------
+# no H0
+leveneTest(use_nonRP ~ Condition, data = RP) # p = 0.09 --> assume equal var
+
+use_nonRP_I_ttest <- t.test(use_nonRP ~ Condition, var.equal = TRUE, data = RP)
+use_nonRP_I_ttest # raw result shows control vs. experiment; t(384) = -1.35, p = 0.18
+
+use_nonRP_I_cohend <- psych::cohen.d(x = RP$use_nonRP, group = RP$Condition)
+use_nonRP_I_cohend # raw result shows experiment vs. control; -0.14
+
+# ------ use_nonRP ANOVA ------
+use_nonRP_D_cohend <- psych::cohen.d(x = RP$use_nonRP_D, group = RP$Condition)
+use_nonRP_D_cohend
+
+# no H0
+# gather the columns use_nonRP & use_nonRP_D into long format.
+use_nonRP_df <- RP %>%
+    dplyr::select(id, Condition, use_nonRP, use_nonRP_D) %>%
+    rename(T1 = use_nonRP,
+           T2 = use_nonRP_D) %>%
+    gather(key = "time", value = "use_nonRP_score", T1, T2) %>%
+    convert_as_factor(id, Condition, time)
+head(use_nonRP_df)
+# double check n, m, & sd
+use_nonRP_df %>%
+    group_by(time, Condition) %>%
+    get_summary_stats(use_nonRP_score, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# check assumption: no outliers in each cell
+use_nonRP_df %>%
+    group_by(time, Condition) %>%
+    identify_outliers(use_nonRP_score) # 0 outlier
+# check assumption: normality in each cell (Shapiro-Wilk test)
+use_nonRP_df %>%
+    group_by(time, Condition) %>%
+    shapiro_test(use_nonRP_score) # all p values less than 0.05, but test sensitive to large sample size
+# check assumption: normality in each cell (QQ plot)
+ggqqplot(use_nonRP_df, "use_nonRP_score", ggtheme = theme_bw()) + facet_grid(time ~ Condition) # looks okay
+# check assumption: homogeneity of variance between cells
+leveneTest(use_nonRP_score ~ time*Condition, data = use_nonRP_df) # p = 0.18
+# check assumption: sphericity AKA equal variance in difference between repeated measures, applies to > 2 repetitions
+
+# mixed ANOVA
+use_nonRP_ANOVA <- anova_test(data = use_nonRP_df, dv = use_nonRP_score, wid = id, between = Condition, within = time, type = 3, effect.size = "pes")
+get_anova_table(use_nonRP_ANOVA)
+# main of Condition: F(1, 278) = 1.94, p = 0.17, partial eta2 = 0.007
+# main of time: F(1, 278) = 6.71, p = 0.01**, partial eta2 = 0.024 --> use_nonRP decreased over time
+# main of interaction: F(1, 278) = 0.50, p = 0.48, partial eta2 = 0.002
+
+# ------ use_typicalRP immediate two-sided t test ------
+# no H0
+leveneTest(use_typicalRP ~ Condition, data = RP) # p = 0.69 --> assume equal var
+
+use_typicalRP_I_ttest <- t.test(use_typicalRP ~ Condition, var.equal = TRUE, data = RP)
+use_typicalRP_I_ttest # raw result shows control vs. experiment; t(384) = -0.47, p = 0.64
+
+use_typicalRP_I_cohend <- psych::cohen.d(x = RP$use_typicalRP, group = RP$Condition)
+use_typicalRP_I_cohend # raw result shows experiment vs. control; -0.05
+
+# ------ use_typicalRP ANOVA ------
+use_typicalRP_D_cohend <- psych::cohen.d(x = RP$use_typicalRP_D, group = RP$Condition)
+use_typicalRP_D_cohend
+
+# no H0
+# gather the columns use_typicalRP & use_typicalRP_D into long format.
+use_typicalRP_df <- RP %>%
+    dplyr::select(id, Condition, use_typicalRP, use_typicalRP_D) %>%
+    rename(T1 = use_typicalRP,
+           T2 = use_typicalRP_D) %>%
+    gather(key = "time", value = "use_typicalRP_score", T1, T2) %>%
+    convert_as_factor(id, Condition, time)
+head(use_typicalRP_df)
+# double check n, m, & sd
+use_typicalRP_df %>%
+    group_by(time, Condition) %>%
+    get_summary_stats(use_typicalRP_score, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# check assumption: no outliers in each cell
+use_typicalRP_df %>%
+    group_by(time, Condition) %>%
+    identify_outliers(use_typicalRP_score) # 0 outliers
+# check assumption: normality in each cell (Shapiro-Wilk test)
+use_typicalRP_df %>%
+    group_by(time, Condition) %>%
+    shapiro_test(use_typicalRP_score) # all p values less than 0.05, but test sensitive to large sample size
+# check assumption: normality in each cell (QQ plot)
+ggqqplot(use_typicalRP_df, "use_typicalRP_score", ggtheme = theme_bw()) + facet_grid(time ~ Condition) # looks okay
+# check assumption: homogeneity of variance between cells
+leveneTest(use_typicalRP_score ~ time*Condition, data = use_typicalRP_df) # p = 0.003**
+# check assumption: sphericity AKA equal variance in difference between repeated measures, applies to > 2 repetitions
+
+# mixed ANOVA
+use_typicalRP_ANOVA <- anova_test(data = use_typicalRP_df, dv = use_typicalRP_score, wid = id, between = Condition, within = time, type = 3, effect.size = "pes")
+get_anova_table(use_typicalRP_ANOVA)
+# main of Condition: F(1, 278) = 0.18, p = 0.67, partial eta2 < 0.001
+# main of time: F(1, 278) = 52.99, p < 0.001***, partial eta2 = 0.160 --> use_typicalRP decreases over time
+# main of interaction: F(1, 278) = 0.51, p = 0.48, partial eta2 = 0.002
+
+# ------ corr between T1 & T2 ------
+cor.test(RP$use_nonRP, RP$use_nonRP_D,  method = "pearson", use = "complete.obs") # 0.55***
+cor.test(RP$use_typicalRP, RP$use_typicalRP_D,  method = "pearson", use = "complete.obs") # 0.47***
+```
+
+
+```{r numerical moderators: MB}
+names(RP)
+# center variables: impossBelief, diffImport, fixed, cost, cost_D
+# center other variables: TMK, TMK_D, AMK, AMK_D
+RP <- RP %>%
+    mutate(TMK_center = as.vector(scale(TMK, scale = FALSE)),
+           TMK_D_center = as.vector(scale(TMK_D, scale = FALSE)),
+           AMK_center = as.vector(scale(AMK, scale = FALSE)),
+           AMK_D_center = as.vector(scale(AMK_D, scale = FALSE)),
+           cost_center = as.vector(scale(cost, scale = FALSE)),
+           cost_D_center = as.vector(scale(cost_D, scale = FALSE)),
+           impossBelief_center = as.vector(scale(impossBelief, scale = FALSE)),
+           diffImport_center = as.vector(scale(diffImport, scale = FALSE)),
+           fixed_center = as.vector(scale(fixed, scale = FALSE)))
+
+# ------ MB ------ 
+# ------ all MBs ------
+cost_MB_mod <- lm(cost_center ~ impossBelief_center*Condition + diffImport_center*Condition + fixed_center*Condition, data = RP)
+summary(cost_MB_mod)
+# impossBelief + 1, cost@T1 + 0.46***
+# diffImport + 1, cost@T1 - 0.23** (qualified by interaction)
+plot_model(cost_MB_mod, type = "int")
+# low diffImport: everything < control (more effective); high diffImport: everything > control (less effective)
+# high fixed: everything > control (less effective)
+
+#costD_MB_mod <- lm(cost_D_center ~ impossBelief_center*Condition + diffImport_center*Condition + #fixed_center*Condition + cost_center, data = RP)
+#summary(costD_MB_mod)
+# impossBelief + 1, cost@T2 + 0.15~
+# cost@T1 + 1, cost@T2 + 0.61
+
+# how to determine whether multicolinearity is an issue for interaction terms
+# https://statisticsbyjim.com/regression/multicollinearity-in-regression-analysis/
+vif(cost_MB_mod) # all < 5
+#vif(costD_MB_mod) # all < 5
+
+# ------ one MB at a time ------
+cost_iB_mod <- lm(cost_center ~ impossBelief_center*Condition, data = RP)
+summary(cost_iB_mod)
+# impossBelief + 1, cost@T1 + 0.50***
+
+cost_dI_mod <- lm(cost_center ~ diffImport_center*Condition, data = RP)
+summary(cost_dI_mod)
+# diffImport + 1, cost@T1 - 0.36*** (qualified by interaction)
+plot_model(cost_dI_mod, type = "int")
+# low diffImport: everything < control (more effective); high diffImport: everything > control (less effective)
+
+cost_f_mod <- lm(cost_center ~ fixed_center*Condition, data = RP)
+summary(cost_f_mod)
+# fixed + 1, cost@T1 + 0.18**
+# no interaction between fixed and condition
+
+# ------ all MBs no interaction ------
+cor.test(RP$diffImport, RP$cost,  method = "pearson", use = "complete.obs") # -0.19***
+cor.test(RP$fixed, RP$cost,  method = "pearson", use = "complete.obs") # 0.29***
+cor.test(RP$impossBelief, RP$cost,  method = "pearson", use = "complete.obs") # 0.47***
+
+cost_MB_nomod <- lm(scale(cost) ~ Condition + scale(diffImport) + scale(fixed) + scale(impossBelief), data = RP)
+summary(cost_MB_nomod)
+
+# impossBelief 0.42***
+vif(cost_MB_mod) # all < 5
+
+# ------ one MB at a time no interaction ------
+cost_iB_nomod <- lm(cost_center ~ impossBelief_center + Condition, data = RP)
+summary(cost_iB_nomod)
+# impossBelief + 1, cost@T1 + 0.48***
+
+cost_dI_nomod <- lm(cost_center ~ diffImport_center + Condition, data = RP)
+summary(cost_dI_nomod)
+# diffImport + 1, cost@T1 - 0.22***
+
+cost_f_nomod <- lm(cost_center ~ fixed_center + Condition, data = RP)
+summary(cost_f_nomod)
+# fixed + 1, cost@T1 + 0.23**
+
+# 
+generalRP_MB_mod <- lm(use_generalRP ~ impossBelief_center*cost_center + diffImport_center*cost_center + fixed_center*cost_center, data = RP)
+summary(generalRP_MB_mod)
+# diffImport + 1, use@T1 + 0.17***
+# cost + 1, use@T1 - 0.11**
+plot_model(generalRP_MB_mod, type = "int", mdrt.values = "meansd")
+# low fixed: low cost > high cost; high fixed: high cost > low cost
+
+```
+
+
+```{r categorical moderators: URM, fidelity}
+# ------ URM ------
+RP$URM
+sum(is.na(RP$URM)) # 1 NA
+
+# ------ URM: TMK immediate independent ANOVA ------
+# https://www.datanovia.com/en/lessons/anova-in-r/
+# IV: Condition, URM
+URM_TMK_wide <- RP %>%
+    dplyr::select(id, Condition, URM, TMK, TMK_D) %>%
+    filter(is.na(URM) == FALSE) %>%
+    convert_as_factor(id, Condition, URM)
+head(URM_TMK_wide)
+# double check n, m, & sd
+URM_TMK_wide %>%
+    group_by(Condition, URM) %>%
+    get_summary_stats(TMK, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+URM_TMK_ANOVA <- URM_TMK_wide %>% 
+    anova_test(TMK ~ Condition*URM, type = 3, effect.size = "pes")
+get_anova_table(URM_TMK_ANOVA)
+# main of Condition: F(1, 381) = 1.09, p = 0.30, partial eta2 = 0.003
+# main of URM: F(1, 381) = 0.12, p = 0.74, partial eta2 = 0.000
+# main of interaction: F(1, 381) = 0.30, p = 0.59, partial eta2 = 0.001
+
+# ------ URM: TMK mixed ANOVA ------
+# https://www.datanovia.com/en/lessons/mixed-anova-in-r/#three-way-bbw-b
+# IV: Condition, URM, time
+# gather the columns TMK & TMK_D into long format
+URM_TMK_long <- URM_TMK_wide %>%
+    rename(T1 = TMK,
+           T2 = TMK_D) %>%
+    gather(key = "time", value = "TMK_score", T1, T2) %>%
+    convert_as_factor(time)
+head(URM_TMK_long)
+# double check n, m, & sd
+URM_TMK_long %>%
+    group_by(Condition, URM, time) %>%
+    get_summary_stats(TMK_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    facet_wrap(~ URM, ncol = 2)+ 
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "Theoretical metacognitive knowledge (1-7)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+ggsave("URM_TMK_ANOVA.png", height = 4, width = 8, dpi = 300)
+
+# mixed (2 between 1 within) ANOVA
+URM_TMK_mixANOVA <- anova_test(data = URM_TMK_long, dv = TMK_score, wid = id, 
+                               between = c(Condition, URM), within = time, type = 3, effect.size = "pes")
+get_anova_table(URM_TMK_mixANOVA)
+# time: F(1, 275) = 19.80, p < 0.001***, pes = 0.067
+# URM:time F(1, 275) = 6.61, p < 0.01*, pes = 0.023
+# post hoc
+URM_TMK_oneway <- URM_TMK_long %>%
+    group_by(time) %>%
+    anova_test(dv = TMK_score, wid = id, between = URM) %>%
+    get_anova_table() %>%
+    adjust_pvalue(method = "bonferroni")
+URM_TMK_oneway
+
+# ------ URM: AMK immediate independent ANOVA ------
+# IV: Condition, URM
+URM_AMK_wide <- RP %>%
+    dplyr::select(id, Condition, URM, AMK, AMK_D) %>%
+    filter(is.na(URM) == FALSE) %>%
+    convert_as_factor(id, Condition, URM)
+head(URM_AMK_wide)
+# double check n, m, & sd
+URM_AMK_wide %>%
+    group_by(Condition, URM) %>%
+    get_summary_stats(AMK, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+URM_AMK_ANOVA <- URM_AMK_wide %>% 
+    anova_test(AMK ~ Condition*URM, type = 3, effect.size = "pes")
+get_anova_table(URM_AMK_ANOVA)
+# main of Condition: F(1, 380) = 3.29, p = 0.07~, partial eta2 = 0.009 --> Everything > Control
+# main of URM: F(1, 380) = 0.08, p = 0.78, partial eta2 = 0.000
+# main of interaction: F(1, 380) = 0.00, p = 0.98, partial eta2 = 0.000
+
+# ------ URM: AMK mixed ANOVA ------
+# IV: Condition, URM, time
+# gather the columns AMK & AMK_D into long format
+URM_AMK_long <- URM_AMK_wide %>%
+    rename(T1 = AMK,
+           T2 = AMK_D) %>%
+    gather(key = "time", value = "AMK_score", T1, T2) %>%
+    convert_as_factor(time)
+head(URM_AMK_long)
+# double check n, m, & sd
+URM_AMK_long %>%
+    group_by(Condition, URM, time) %>%
+    get_summary_stats(AMK_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    facet_wrap(~ URM, ncol = 2)+ 
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "Applied metacognitive knowledge (1-7)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+ggsave("URM_AMK_ANOVA.png", height = 4, width = 8, dpi = 300)
+
+# mixed (2 between 1 within) ANOVA
+URM_AMK_mixANOVA <- anova_test(data = URM_AMK_long, dv = AMK_score, wid = id, 
+                               between = c(Condition, URM), within = time, type = 3, effect.size = "pes")
+get_anova_table(URM_AMK_mixANOVA)
+# time: F(1, 274) = 4.61, p < 0.03*, pes = 0.017
+# Condition:time F(1, 274) = 4.09, p < 0.04*, pes = 0.015
+URM_AMK_oneway <- URM_AMK_long %>%
+    group_by(URM) %>%
+    anova_test(dv = AMK_score, wid = id, between = Condition) %>%
+    get_anova_table() %>%
+    adjust_pvalue(method = "bonferroni")
+URM_AMK_oneway
+
+# ------ URM: cost immediate independent ANOVA ------
+# IV: Condition, URM
+URM_cost_wide <- RP %>%
+    dplyr::select(id, Condition, URM, cost, cost_D) %>%
+    filter(is.na(URM) == FALSE) %>%
+    convert_as_factor(id, Condition, URM)
+head(URM_cost_wide)
+# double check n, m, & sd
+URM_cost_wide %>%
+    group_by(Condition, URM) %>%
+    get_summary_stats(cost, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+URM_cost_ANOVA <- URM_cost_wide %>% 
+    anova_test(cost ~ Condition*URM, type = 3, effect.size = "pes")
+get_anova_table(URM_cost_ANOVA)
+# main of Condition: F(1, 381) = 0.46, p = 0.50, partial eta2 = 0.001
+# main of URM: F(1, 381) = 0.00, p = 0.98, partial eta2 = 0.000
+# main of interaction: F(1, 381) = 2.01, p = 0.16, partial eta2 = 0.005
+
+# ------ URM: cost mixed ANOVA ------
+# IV: Condition, URM, time
+# gather the columns cost & cost_D into long format
+URM_cost_long <- URM_cost_wide %>%
+    rename(T1 = cost,
+           T2 = cost_D) %>%
+    gather(key = "time", value = "cost_score", T1, T2) %>%
+    convert_as_factor(time)
+head(URM_cost_long)
+# double check n, m, & sd
+URM_cost_long %>%
+    group_by(Condition, URM, time) %>%
+    get_summary_stats(cost_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    facet_wrap(~ URM, ncol = 2)+ 
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "Cost (1-7)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+ggsave("URM_cost_ANOVA.png", height = 4, width = 8, dpi = 300)
+
+# mixed (2 between 1 within) ANOVA
+URM_cost_mixANOVA <- anova_test(data = URM_cost_long, dv = cost_score, wid = id, 
+                               between = c(Condition, URM), within = time, type = 3, effect.size = "pes")
+get_anova_table(URM_cost_mixANOVA)
+
+# ------ URM: use_generalRP immediate independent ANOVA ------
+# IV: Condition, URM
+URM_usegen_wide <- RP %>%
+    dplyr::select(id, Condition, URM, use_generalRP, use_generalRP_D) %>%
+    filter(is.na(URM) == FALSE) %>%
+    convert_as_factor(id, Condition, URM)
+head(URM_usegen_wide)
+# double check n, m, & sd
+URM_usegen_wide %>%
+    group_by(Condition, URM) %>%
+    get_summary_stats(use_generalRP, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+URM_usegen_ANOVA <- URM_usegen_wide %>% 
+    anova_test(use_generalRP ~ Condition*URM, type = 3, effect.size = "pes")
+get_anova_table(URM_usegen_ANOVA)
+# main of Condition: F(1, 381) = 3.32, p = 0.07~, partial eta2 = 0.009 --> Everything > Control
+# main of URM: F(1, 381) = 0.68, p = 0.41, partial eta2 = 0.002
+# main of interaction: F(1, 381) = 0.52, p = 0.16, partial eta2 = 0.001
+
+# ------ URM: use_generalRP mixed ANOVA ------
+# IV: Condition, URM, time
+# gather the columns use_generalRP & use_generalRP_D into long format
+URM_usegen_long <- URM_usegen_wide %>%
+    rename(T1 = use_generalRP,
+           T2 = use_generalRP_D) %>%
+    gather(key = "time", value = "usegen_score", T1, T2) %>%
+    convert_as_factor(time)
+head(URM_usegen_long)
+# double check n, m, & sd
+URM_usegen_long %>%
+    group_by(Condition, URM, time) %>%
+    get_summary_stats(usegen_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    facet_wrap(~ URM, ncol = 2)+ 
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "General methods of retrieval practice (1-5)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+ggsave("URM_usegen_ANOVA.png", height = 4, width = 8, dpi = 300)
+
+# mixed (2 between 1 within) ANOVA
+URM_usegen_mixANOVA <- anova_test(data = URM_usegen_long, dv = usegen_score, wid = id, 
+                               between = c(Condition, URM), within = time, type = 3, effect.size = "pes")
+get_anova_table(URM_usegen_mixANOVA)
+# time: F(1, 275) = 17.68, p < 0.001***, pes = 0.060
+
+# ------ firstGen ------
+RP$firstGen
+sum(is.na(RP$firstGen)) # 4 NA
+
+# ------ firstGen: TMK immediate independent ANOVA ------
+# https://www.datanovia.com/en/lessons/anova-in-r/
+# IV: Condition, firstGen
+firstGen_TMK_wide <- RP %>%
+    dplyr::select(id, Condition, firstGen, TMK, TMK_D) %>%
+    filter(is.na(firstGen) == FALSE) %>%
+    convert_as_factor(id, Condition, firstGen)
+head(firstGen_TMK_wide)
+# double check n, m, & sd
+firstGen_TMK_wide %>%
+    group_by(Condition, firstGen) %>%
+    get_summary_stats(TMK, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+firstGen_TMK_ANOVA <- firstGen_TMK_wide %>% 
+    anova_test(TMK ~ Condition*firstGen, type = 3, effect.size = "pes")
+get_anova_table(firstGen_TMK_ANOVA)
+# main of Condition: F(1, 379) = 0.10, p = 0.75, partial eta2 = 0.000
+# main of firstGen: F(1, 379) = 1.90, p = 0.17, partial eta2 = 0.005
+# main of interaction: F(1, 379) = 0.08, p = 0.18, partial eta2 = 0.000
+
+# ------ firstGen: TMK mixed ANOVA ------
+# https://www.datanovia.com/en/lessons/mixed-anova-in-r/#three-way-bbw-b
+# IV: Condition, firstGen, time
+# gather the columns TMK & TMK_D into long format
+firstGen_TMK_long <- firstGen_TMK_wide %>%
+    rename(T1 = TMK,
+           T2 = TMK_D) %>%
+    gather(key = "time", value = "TMK_score", T1, T2) %>%
+    convert_as_factor(time)
+head(firstGen_TMK_long)
+# double check n, m, & sd
+firstGen_TMK_long %>%
+    group_by(Condition, firstGen, time) %>%
+    get_summary_stats(TMK_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    facet_wrap(~ firstGen, ncol = 2)+ 
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "Theoretical metacognitive knowledge (1-7)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+#ggsave("firstGen_TMK_ANOVA.png", height = 4, width = 8, dpi = 300)
+
+# mixed (2 between 1 within) ANOVA
+firstGen_TMK_mixANOVA <- anova_test(data = firstGen_TMK_long, dv = TMK_score, wid = id, 
+                               between = c(Condition, firstGen), within = time, type = 3, effect.size = "pes")
+get_anova_table(firstGen_TMK_mixANOVA)
+# time: F(1, 275) = 24.38, p < 0.001***, pes = 0.081
+# firstGen:time F(1, 275) = 11.07, p < 0.001***, pes = 0.039
+# post hoc
+firstGen_TMK_oneway <- firstGen_TMK_long %>%
+    group_by(time) %>%
+    anova_test(dv = TMK_score, wid = id, between = firstGen) %>%
+    get_anova_table() %>%
+    adjust_pvalue(method = "bonferroni")
+firstGen_TMK_oneway
+
+# ------ firstGen: AMK immediate independent ANOVA ------
+# IV: Condition, firstGen
+firstGen_AMK_wide <- RP %>%
+    dplyr::select(id, Condition, firstGen, AMK, AMK_D) %>%
+    filter(is.na(firstGen) == FALSE) %>%
+    convert_as_factor(id, Condition, firstGen)
+head(firstGen_AMK_wide)
+# double check n, m, & sd
+firstGen_AMK_wide %>%
+    group_by(Condition, firstGen) %>%
+    get_summary_stats(AMK, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+firstGen_AMK_ANOVA <- firstGen_AMK_wide %>% 
+    anova_test(AMK ~ Condition*firstGen, type = 3, effect.size = "pes")
+get_anova_table(firstGen_AMK_ANOVA)
+# main of Condition: F(1, 378) = 0.16, p = 0.69, partial eta2 = 0.000
+# main of firstGen: F(1, 378) = 1.23, p = 0.27, partial eta2 = 0.003
+# main of interaction: F(1, 378) = 0.30, p = 0.58, partial eta2 = 0.001
+
+# ------ firstGen: AMK mixed ANOVA ------
+# IV: Condition, firstGen, time
+# gather the columns AMK & AMK_D into long format
+firstGen_AMK_long <- firstGen_AMK_wide %>%
+    rename(T1 = AMK,
+           T2 = AMK_D) %>%
+    gather(key = "time", value = "AMK_score", T1, T2) %>%
+    convert_as_factor(time)
+head(firstGen_AMK_long)
+# double check n, m, & sd
+firstGen_AMK_long %>%
+    group_by(Condition, firstGen, time) %>%
+    get_summary_stats(AMK_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    facet_wrap(~ firstGen, ncol = 2)+ 
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "Applied metacognitive knowledge (1-7)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+#ggsave("firstGen_AMK_ANOVA.png", height = 4, width = 8, dpi = 300)
+
+# mixed (2 between 1 within) ANOVA
+firstGen_AMK_mixANOVA <- anova_test(data = firstGen_AMK_long, dv = AMK_score, wid = id, 
+                               between = c(Condition, firstGen), within = time, type = 3, effect.size = "pes")
+get_anova_table(firstGen_AMK_mixANOVA)
+# time: F(1, 274) = 9.67, p = 0.002, pes = 0.034
+
+# ------ firstGen: cost immediate independent ANOVA ------
+# IV: Condition, firstGen
+firstGen_cost_wide <- RP %>%
+    dplyr::select(id, Condition, firstGen, cost, cost_D) %>%
+    filter(is.na(firstGen) == FALSE) %>%
+    convert_as_factor(id, Condition, firstGen)
+head(firstGen_cost_wide)
+# double check n, m, & sd
+firstGen_cost_wide %>%
+    group_by(Condition, firstGen) %>%
+    get_summary_stats(cost, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+firstGen_cost_ANOVA <- firstGen_cost_wide %>% 
+    anova_test(cost ~ Condition*firstGen, type = 3, effect.size = "pes")
+get_anova_table(firstGen_cost_ANOVA)
+# main of Condition: F(1, 379) = 0.03, p = 0.87, partial eta2 = 0.000
+# main of firstGen: F(1, 379) = 0.08, p = 0.79, partial eta2 = 0.000
+# main of interaction: F(1, 379) = 0.07, p = 0.79, partial eta2 = 0.000
+
+# ------ firstGen: cost mixed ANOVA ------
+# IV: Condition, firstGen, time
+# gather the columns cost & cost_D into long format
+firstGen_cost_long <- firstGen_cost_wide %>%
+    rename(T1 = cost,
+           T2 = cost_D) %>%
+    gather(key = "time", value = "cost_score", T1, T2) %>%
+    convert_as_factor(time)
+head(firstGen_cost_long)
+# double check n, m, & sd
+firstGen_cost_long %>%
+    group_by(Condition, firstGen, time) %>%
+    get_summary_stats(cost_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    facet_wrap(~ firstGen, ncol = 2)+ 
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "Cost (1-7)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+#ggsave("firstGen_cost_ANOVA.png", height = 4, width = 8, dpi = 300)
+
+# mixed (2 between 1 within) ANOVA
+firstGen_cost_mixANOVA <- anova_test(data = firstGen_cost_long, dv = cost_score, wid = id, 
+                               between = c(Condition, firstGen), within = time, type = 3, effect.size = "pes")
+get_anova_table(firstGen_cost_mixANOVA)
+
+# ------ firstGen: use_generalRP immediate independent ANOVA ------
+# IV: Condition, firstGen
+firstGen_usegen_wide <- RP %>%
+    dplyr::select(id, Condition, firstGen, use_generalRP, use_generalRP_D) %>%
+    filter(is.na(firstGen) == FALSE) %>%
+    convert_as_factor(id, Condition, firstGen)
+head(firstGen_usegen_wide)
+# double check n, m, & sd
+firstGen_usegen_wide %>%
+    group_by(Condition, firstGen) %>%
+    get_summary_stats(use_generalRP, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+firstGen_usegen_ANOVA <- firstGen_usegen_wide %>% 
+    anova_test(use_generalRP ~ Condition*firstGen, type = 3, effect.size = "pes")
+get_anova_table(firstGen_usegen_ANOVA)
+# main of Condition: F(1, 379) = 3.54, p = 0.06~, partial eta2 = 0.009 --> Everything > Control
+# main of firstGen: F(1, 379) = 0.61, p = 0.44, partial eta2 = 0.002
+# main of interaction: F(1, 379) = 1.52, p = 0.22, partial eta2 = 0.004
+
+# ------ firstGen: use_generalRP mixed ANOVA ------
+# IV: Condition, firstGen, time
+# gather the columns use_generalRP & use_generalRP_D into long format
+firstGen_usegen_long <- firstGen_usegen_wide %>%
+    rename(T1 = use_generalRP,
+           T2 = use_generalRP_D) %>%
+    gather(key = "time", value = "usegen_score", T1, T2) %>%
+    convert_as_factor(time)
+head(firstGen_usegen_long)
+# double check n, m, & sd
+firstGen_usegen_long %>%
+    group_by(Condition, firstGen, time) %>%
+    get_summary_stats(usegen_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    facet_wrap(~ firstGen, ncol = 2)+ 
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "General methods of retrieval practice (1-5)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+#ggsave("firstGen_usegen_ANOVA.png", height = 4, width = 8, dpi = 300)
+
+# mixed (2 between 1 within) ANOVA
+firstGen_usegen_mixANOVA <- anova_test(data = firstGen_usegen_long, dv = usegen_score, wid = id, 
+                               between = c(Condition, firstGen), within = time, type = 3, effect.size = "pes")
+get_anova_table(firstGen_usegen_mixANOVA)
+# Condition: F(1, 275) = 5.63, p < 0.018*, pes = 0.020
+# time: F(1, 275) = 12.66, p < 0.001***, pes = 0.044
+
+# ------ delayed ------
+RP$delayed
+sum(is.na(RP$delayed)) # 0 NA
+
+# ------ delayed: TMK immediate independent ANOVA ------
+# IV: Condition, delayed
+fdlt_TMK_wide <- RP %>%
+    dplyr::select(id, Condition, delayed, TMK, TMK_D) %>%
+    filter(is.na(delayed) == FALSE) %>%
+    convert_as_factor(id, Condition, delayed)
+head(fdlt_TMK_wide)
+# double check n, m, & sd
+fdlt_TMK_wide %>%
+    group_by(Condition, delayed) %>%
+    get_summary_stats(TMK, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = delayed, y = mean, fill = Condition)) +
+    geom_bar(stat = "identity", position="dodge") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.2, position=position_dodge(0.9)) + 
+    scale_fill_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Whether participated in delayed survey", y = "Theoretical metacognitive knowledge (1-7)", fill = "Condition") +
+    geom_text(aes(label=mean), vjust = 2.4, color="black", size = 3, position = position_dodge(0.9)) +
+    geom_text(aes(label=se), vjust = 3.8, color="black", size = 3, position = position_dodge(0.9)) +
+    theme_apa()
+ggsave("fdlt_TMK_ANOVA.png", height = 4, width = 5, dpi = 300)
+
+# 2-way ANOVA
+fdlt_TMK_ANOVA <- fdlt_TMK_wide %>% 
+    anova_test(TMK ~ Condition*delayed, type = 3, effect.size = "pes")
+get_anova_table(fdlt_TMK_ANOVA)
+# main of Condition: F(1, 382) = 0.98, p = 0.32, partial eta2 = 0.003
+# main of delayed: F(1, 382) = 0.15, p = 0.70, partial eta2 = 0.000
+# main of interaction: F(1, 382) = 0.04, p = 0.84, partial eta2 = 0.000
+
+# ------ delayed: AMK immediate independent ANOVA ------
+# IV: Condition, delayed
+fdlt_AMK_wide <- RP %>%
+    dplyr::select(id, Condition, delayed, AMK, AMK_D) %>%
+    filter(is.na(delayed) == FALSE) %>%
+    convert_as_factor(id, Condition, delayed)
+head(fdlt_AMK_wide)
+# double check n, m, & sd
+fdlt_AMK_wide %>%
+    group_by(Condition, delayed) %>%
+    get_summary_stats(AMK, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = delayed, y = mean, fill = Condition)) +
+    geom_bar(stat = "identity", position="dodge") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.2, position=position_dodge(0.9)) + 
+    scale_fill_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Whether participated in delayed survey", y = "Applied metacognitive knowledge (1-7)", fill = "Condition") +
+    geom_text(aes(label=mean), vjust = 2.4, color="black", size = 3, position = position_dodge(0.9)) +
+    geom_text(aes(label=se), vjust = 3.8, color="black", size = 3, position = position_dodge(0.9)) +
+    theme_apa()
+ggsave("fdlt_AMK_ANOVA.png", height = 4, width = 5, dpi = 300)
+
+# 2-way ANOVA
+fdlt_AMK_ANOVA <- fdlt_AMK_wide %>% 
+    anova_test(AMK ~ Condition*delayed, type = 3, effect.size = "pes")
+get_anova_table(fdlt_AMK_ANOVA)
+# main of Condition: F(1, 381) = 0.89, p = 0.35, partial eta2 = 0.002
+# main of delayed: F(1, 381) = 0.01, p = 0.92, partial eta2 = 0.000
+# main of interaction: F(1, 381) = 0.04, p = 0.84, partial eta2 = 0.000
+
+# ------ delayed: cost immediate independent ANOVA ------
+# IV: Condition, delayed
+fdlt_cost_wide <- RP %>%
+    dplyr::select(id, Condition, delayed, cost, cost_D) %>%
+    filter(is.na(delayed) == FALSE) %>%
+    convert_as_factor(id, Condition, delayed)
+head(fdlt_cost_wide)
+# double check n, m, & sd
+fdlt_cost_wide %>%
+    group_by(Condition, delayed) %>%
+    get_summary_stats(cost, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = delayed, y = mean, fill = Condition)) +
+    geom_bar(stat = "identity", position="dodge") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.2, position=position_dodge(0.9)) + 
+    scale_fill_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Whether participated in delayed survey", y = "Cost (1-7)", fill = "Condition") +
+    geom_text(aes(label=mean), vjust = 3.2, color="black", size = 3, position = position_dodge(0.9)) +
+    geom_text(aes(label=se), vjust = 4.6, color="black", size = 3, position = position_dodge(0.9)) +
+    theme_apa()
+ggsave("fdlt_cost_ANOVA.png", height = 4, width = 5, dpi = 300)
+
+# 2-way ANOVA
+fdlt_cost_ANOVA <- fdlt_cost_wide %>% 
+    anova_test(cost ~ Condition*delayed, type = 3, effect.size = "pes")
+get_anova_table(fdlt_cost_ANOVA)
+# main of Condition: F(1, 382) = 0.02, p = 0.89, partial eta2 = 0.000
+# main of delayed: F(1, 382) = 0.36, p = 0.55, partial eta2 = 0.001
+# main of interaction: F(1, 382) = 0.02, p = 0.88, partial eta2 = 0.000
+
+# ------ delayed: use_generalRP immediate independent ANOVA ------
+# IV: Condition, delayed
+fdlt_usegen_wide <- RP %>%
+    dplyr::select(id, Condition, delayed, use_generalRP, use_generalRP_D) %>%
+    filter(is.na(delayed) == FALSE) %>%
+    convert_as_factor(id, Condition, delayed)
+head(fdlt_usegen_wide)
+# double check n, m, & sd
+fdlt_usegen_wide %>%
+    group_by(Condition, delayed) %>%
+    get_summary_stats(use_generalRP, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = delayed, y = mean, fill = Condition)) +
+    geom_bar(stat = "identity", position="dodge") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.2, position=position_dodge(0.9)) + 
+    scale_fill_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Whether participated in delayed survey", y = "General methods of retrieval practice (1-5)", fill = "Condition") +
+    geom_text(aes(label=mean), vjust = 2.4, color="black", size = 3, position = position_dodge(0.9)) +
+    geom_text(aes(label=se), vjust = 3.8, color="black", size = 3, position = position_dodge(0.9)) +
+    theme_apa()
+ggsave("fdlt_usegen_ANOVA.png", height = 4, width = 5, dpi = 300)
+
+# 2-way ANOVA
+fdlt_usegen_ANOVA <- fdlt_usegen_wide %>% 
+    anova_test(use_generalRP ~ Condition*delayed, type = 3, effect.size = "pes")
+get_anova_table(fdlt_usegen_ANOVA)
+# main of Condition: F(1, 382) = 0.78, p = 0.38, partial eta2 = 0.002
+# main of delayed: F(1, 382) = 1.68, p = 0.20, partial eta2 = 0.004
+# main of interaction: F(1, 382) = 0.01, p = 0.95, partial eta2 = 0.000
+
+# ------ finishvids ------
+names(RP)
+RP$vid_1_time_Page.Submit # video 1 is 140s
+RP$vid_2_time_Page.Submit # video 2 is 48s
+RP <- RP %>%
+    mutate(finishvid1 = as.factor(ifelse(vid_1_time_Page.Submit >= 140, "y", "n")),
+           finishvid2 = as.factor(ifelse(vid_2_time_Page.Submit >= 48, "y", "n")),
+           finishvids = as.factor(ifelse(vid_1_time_Page.Submit >= 148 & vid_2_time_Page.Submit >= 48, "y", "n")),
+           finish1vid = as.factor(ifelse(vid_1_time_Page.Submit >= 148 | vid_2_time_Page.Submit >= 48, "y", "n")))
+RP$finishvid1
+table(RP$finishvid1)
+table(RP$finishvid2)
+table(RP$finishvids)
+table(RP$finish1vid)
+
+# ------ finishvids: TMK immediate independent ANOVA ------
+# IV: Condition, finishvids
+finishvids_TMK_wide <- RP %>%
+    dplyr::select(id, Condition, finishvids, TMK, TMK_D) %>%
+    filter(is.na(finishvids) == FALSE) %>%
+    convert_as_factor(id, Condition, finishvids)
+head(finishvids_TMK_wide)
+# double check n, m, & sd
+finishvids_TMK_wide %>%
+    group_by(Condition, finishvids) %>%
+    get_summary_stats(TMK, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = finishvids, y = mean, fill = Condition)) +
+    geom_bar(stat = "identity", position="dodge") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.2, position=position_dodge(0.9)) + 
+    scale_fill_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Whether participated in finishvids survey", y = "Theoretical metacognitive knowledge (1-7)", fill = "Condition") +
+    geom_text(aes(label=mean), vjust = 2.4, color="black", size = 3, position = position_dodge(0.9)) +
+    geom_text(aes(label=se), vjust = 3.8, color="black", size = 3, position = position_dodge(0.9)) +
+    theme_apa()
+#ggsave("finishvids_TMK_ANOVA.png", height = 4, width = 5, dpi = 300)
+
+# 2-way ANOVA
+finishvids_TMK_ANOVA <- finishvids_TMK_wide %>% 
+    anova_test(TMK ~ Condition*finishvids, type = 3, effect.size = "pes")
+get_anova_table(finishvids_TMK_ANOVA)
+# main of Condition: F(1, 382) = 1.17, p = 0.28, partial eta2 = 0.003
+# main of finishvids: F(1, 382) = 0.06, p = 0.81, partial eta2 = 0.000
+# main of interaction: F(1, 382) = 0.68, p = 0.78, partial eta2 = 0.000
+
+# ------ finishvids: AMK immediate independent ANOVA ------
+# IV: Condition, finishvids
+finishvids_AMK_wide <- RP %>%
+    dplyr::select(id, Condition, finishvids, AMK, AMK_D) %>%
+    filter(is.na(finishvids) == FALSE) %>%
+    convert_as_factor(id, Condition, finishvids)
+head(finishvids_AMK_wide)
+# double check n, m, & sd
+finishvids_AMK_wide %>%
+    group_by(Condition, finishvids) %>%
+    get_summary_stats(AMK, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = finishvids, y = mean, fill = Condition)) +
+    geom_bar(stat = "identity", position="dodge") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.2, position=position_dodge(0.9)) + 
+    scale_fill_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Whether participated in finishvids survey", y = "Applied metacognitive knowledge (1-7)", fill = "Condition") +
+    geom_text(aes(label=mean), vjust = 2.4, color="black", size = 3, position = position_dodge(0.9)) +
+    geom_text(aes(label=se), vjust = 3.8, color="black", size = 3, position = position_dodge(0.9)) +
+    theme_apa()
+#ggsave("finishvids_AMK_ANOVA.png", height = 4, width = 5, dpi = 300)
+
+# 2-way ANOVA
+finishvids_AMK_ANOVA <- finishvids_AMK_wide %>% 
+    anova_test(AMK ~ Condition*finishvids, type = 3, effect.size = "pes")
+get_anova_table(finishvids_AMK_ANOVA)
+# main of Condition: F(1, 381) = 0.81, p = 0.37, partial eta2 = 0.002
+# main of finishvids: F(1, 381) = 1.11, p = 0.29, partial eta2 = 0.003
+# main of interaction: F(1, 381) = 1.86, p = 0.17, partial eta2 = 0.005
+
+# ------ finishvids: cost immediate independent ANOVA ------
+# IV: Condition, finishvids
+finishvids_cost_wide <- RP %>%
+    dplyr::select(id, Condition, finishvids, cost, cost_D) %>%
+    filter(is.na(finishvids) == FALSE) %>%
+    convert_as_factor(id, Condition, finishvids)
+head(finishvids_cost_wide)
+# double check n, m, & sd
+finishvids_cost_wide %>%
+    group_by(Condition, finishvids) %>%
+    get_summary_stats(cost, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = finishvids, y = mean, fill = Condition)) +
+    geom_bar(stat = "identity", position="dodge") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.2, position=position_dodge(0.9)) + 
+    scale_fill_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Whether participated in finishvids survey", y = "Cost (1-7)", fill = "Condition") +
+    geom_text(aes(label=mean), vjust = 3.2, color="black", size = 3, position = position_dodge(0.9)) +
+    geom_text(aes(label=se), vjust = 4.6, color="black", size = 3, position = position_dodge(0.9)) +
+    theme_apa()
+#ggsave("finishvids_cost_ANOVA.png", height = 4, width = 5, dpi = 300)
+
+# 2-way ANOVA
+finishvids_cost_ANOVA <- finishvids_cost_wide %>% 
+    anova_test(cost ~ Condition*finishvids, type = 3, effect.size = "pes")
+get_anova_table(finishvids_cost_ANOVA)
+# main of Condition: F(1, 382) = 0.61, p = 0.43, partial eta2 = 0.002
+# main of finishvids: F(1, 382) = 0.08, p = 0.78, partial eta2 = 0.000
+# main of interaction: F(1, 382) = 1.59, p = 0.21, partial eta2 = 0.004
+
+# ------ finishvids: use_generalRP immediate independent ANOVA ------
+# IV: Condition, finishvids
+finishvids_usegen_wide <- RP %>%
+    dplyr::select(id, Condition, finishvids, use_generalRP, use_generalRP_D) %>%
+    filter(is.na(finishvids) == FALSE) %>%
+    convert_as_factor(id, Condition, finishvids)
+head(finishvids_usegen_wide)
+# double check n, m, & sd
+finishvids_usegen_wide %>%
+    group_by(Condition, finishvids) %>%
+    get_summary_stats(use_generalRP, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = finishvids, y = mean, fill = Condition)) +
+    geom_bar(stat = "identity", position="dodge") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.2, position=position_dodge(0.9)) + 
+    scale_fill_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Whether participated in finishvids survey", y = "General methods of retrieval practice (1-5)", fill = "Condition") +
+    geom_text(aes(label=mean), vjust = 2.4, color="black", size = 3, position = position_dodge(0.9)) +
+    geom_text(aes(label=se), vjust = 3.8, color="black", size = 3, position = position_dodge(0.9)) +
+    theme_apa()
+#ggsave("finishvids_usegen_ANOVA.png", height = 4, width = 5, dpi = 300)
+
+# 2-way ANOVA
+finishvids_usegen_ANOVA <- finishvids_usegen_wide %>% 
+    anova_test(use_generalRP ~ Condition*finishvids, type = 3, effect.size = "pes")
+get_anova_table(finishvids_usegen_ANOVA)
+# main of Condition: F(1, 382) = 0.58, p = 0.45, partial eta2 = 0.002
+# main of finishvids: F(1, 382) = 0.41, p = 0.52, partial eta2 = 0.001
+# main of interaction: F(1, 382) = 1.22, p = 0.27, partial eta2 = 0.003 # direction is confusing
+```
+
+
+```{r new AMK open-ended}
+# ------ data cleaning ------
+# LW
+names(AMKOE_LW)
+# force change columns to NAs when there is no response to AMK_OE and replace "y" and ""
+AMKOE_LW$AMK_OE
+AMK_OE_uniq <- unique(AMKOE_LW$AMK_OE)
+AMK_OE_uniq
+AMKOE_LW$AMK_OE_D
+AMK_OE_D_uniq <- unique(AMKOE_LW$AMK_OE_D)
+AMK_OE_D_uniq
+AMKOE_LW$flashcards_LW
+AMKOE_LW$flashcards_D_LW
+AMKOE_LW <- AMKOE_LW %>%
+    mutate(flashcards_LW = ifelse(AMK_OE == "", NA, ifelse(flashcards_LW == "y", 1, 0)),
+           practicetests_LW = ifelse(AMK_OE == "", NA, ifelse(practicetests_LW == "y", 1, 0)),
+           activeretrieve_LW = ifelse(AMK_OE == "", NA, ifelse(activeretrieve_LW == "y", 1, 0)),
+           assignments_LW = ifelse(AMK_OE == "", NA, ifelse(assignments_LW == "y", 1, 0)),
+           structure_LW = ifelse(AMK_OE == "", NA, ifelse(structure_LW == "y", 1, 0)),
+           prompts_LW = ifelse(AMK_OE == "", NA, ifelse(prompts_LW == "y", 1, 0)),
+           freerecall_LW = ifelse(AMK_OE == "", NA, ifelse(freerecall_LW == "y", 1, 0)),
+           selfexplain_LW = ifelse(AMK_OE == "", NA, ifelse(selfexplain_LW == "y", 1, 0)),
+           nonexperts_LW = ifelse(AMK_OE == "", NA, ifelse(nonexperts_LW == "y", 1, 0)),
+           experts_LW = ifelse(AMK_OE == "", NA, ifelse(experts_LW == "y", 1, 0)),
+           flashcards_D_LW = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, ifelse(flashcards_D_LW == "y", 1, 0)),
+           practicetests_D_LW = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                       ifelse(practicetests_D_LW == "y", 1, 0)),
+           activeretrieve_D_LW = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                        ifelse(activeretrieve_D_LW == "y", 1, 0)),
+           assignments_D_LW = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                     ifelse(assignments_D_LW == "y", 1, 0)),
+           structure_D_LW = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                   ifelse(structure_D_LW == "y", 1, 0)),
+           prompts_D_LW = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                 ifelse(prompts_D_LW == "y", 1, 0)),
+           freerecall_D_LW = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                    ifelse(freerecall_D_LW == "y", 1, 0)),
+           selfexplain_D_LW = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                     ifelse(selfexplain_D_LW == "y", 1, 0)),
+           nonexperts_D_LW = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                    ifelse(nonexperts_D_LW == "y", 1, 0)),
+           experts_D_LW = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                 ifelse(experts_D_LW == "y", 1, 0)))
+AMKOE_LW$flashcards_LW
+AMKOE_LW$flashcards_D_LW
+str(AMKOE_LW) # data types also changed
+AMKOE_LW <- AMKOE_LW %>%
+    mutate(examples_LW = (activeretrieve_LW + assignments_LW + structure_LW + prompts_LW + freerecall_LW + selfexplain_LW + nonexperts_LW + experts_LW),
+           examples_D_LW = (activeretrieve_D_LW + assignments_D_LW + structure_D_LW + prompts_D_LW + freerecall_D_LW  + selfexplain_D_LW + nonexperts_D_LW + experts_D_LW))
+AMKOE_LW$examples_LW
+AMKOE_LW$examples_D_LW
+
+# ST
+# force change columns to NAs when there is no response to AMK_OE and replace "y" and ""
+AMKOE_ST <- AMKOE_ST %>%
+    mutate(flashcards_ST = ifelse(AMK_OE == "", NA, ifelse(flashcards_ST == "y", 1, 0)),
+           practicetests_ST = ifelse(AMK_OE == "", NA, ifelse(practicetests_ST == "y", 1, 0)),
+           activeretrieve_ST = ifelse(AMK_OE == "", NA, ifelse(activeretrieve_ST == "y", 1, 0)),
+           assignments_ST = ifelse(AMK_OE == "", NA, ifelse(assignments_ST == "y", 1, 0)),
+           structure_ST = ifelse(AMK_OE == "", NA, ifelse(structure_ST == "y", 1, 0)),
+           prompts_ST = ifelse(AMK_OE == "", NA, ifelse(prompts_ST == "y", 1, 0)),
+           freerecall_ST = ifelse(AMK_OE == "", NA, ifelse(freerecall_ST == "y", 1, 0)),
+           selfexplain_ST = ifelse(AMK_OE == "", NA, ifelse(selfexplain_ST == "y", 1, 0)),
+           nonexperts_ST = ifelse(AMK_OE == "", NA, ifelse(nonexperts_ST == "y", 1, 0)),
+           experts_ST = ifelse(AMK_OE == "", NA, ifelse(experts_ST == "y", 1, 0)))
+AMKOE_ST$flashcards_ST
+str(AMKOE_ST) # data types also changed
+AMKOE_ST <- AMKOE_ST %>%
+    mutate(examples_ST = (activeretrieve_ST + assignments_ST + structure_ST + prompts_ST + freerecall_ST  + selfexplain_ST + nonexperts_ST + experts_ST))
+AMKOE_ST$examples_ST
+
+# combine datasets
+# remove repeated cols other than id
+names(AMKOE_ST)
+AMKOE_ST <- AMKOE_ST[-c(2, 13)]
+names(AMKOE_ST)
+# combine dataset
+AMKOE_Combined <- dplyr::inner_join(AMKOE_LW, AMKOE_ST, by = "id")
+names(AMKOE_Combined)
+AMKOE_Combined$flashcards_LW
+AMKOE_Combined$flashcards_ST
+AMKOE_Combined <- AMKOE_Combined %>%
+    mutate(typical_LW = (flashcards_LW + practicetests_LW),
+           typical_D_LW = (flashcards_D_LW + practicetests_D_LW),
+           typical_ST = (flashcards_ST + practicetests_ST))
+
+# ------ irr ------
+# n = 372
+# null for each is coefficient = 0
+kappa2(AMKOE_Combined[, c("flashcards_LW", "flashcards_ST")], weight = "unweighted") # 0.98
+kappa2(AMKOE_Combined[, c("practicetests_LW", "practicetests_ST")], weight = "unweighted") # 0.71
+icc(AMKOE_Combined[, c("typical_LW", "typical_ST")], model = "twoway", type = "agreement", unit = "single")
+# 0.88 [0.85, 0.90]
+kappa2(AMKOE_Combined[, c("activeretrieve_LW", "activeretrieve_ST")], weight = "unweighted") # 0.787
+kappa2(AMKOE_Combined[, c("assignments_LW", "assignments_ST")], weight = "unweighted") # 0.824
+kappa2(AMKOE_Combined[, c("structure_LW", "structure_ST")], weight = "unweighted") # 0.798
+kappa2(AMKOE_Combined[, c("prompts_LW", "prompts_ST")], weight = "unweighted") # 0.424
+kappa2(AMKOE_Combined[, c("freerecall_LW", "freerecall_ST")], weight = "unweighted") # 0.726
+kappa2(AMKOE_Combined[, c("selfexplain_LW", "selfexplain_ST")], weight = "unweighted") # 0.577
+kappa2(AMKOE_Combined[, c("nonexperts_LW", "nonexperts_ST")], weight = "unweighted") # 0.898
+kappa2(AMKOE_Combined[, c("experts_LW", "experts_ST")], weight = "unweighted") # 0.847
+icc(AMKOE_Combined[, c("examples_LW", "examples_ST")], model = "twoway", type = "agreement", unit = "single")
+# 0.862
+# reporting see https://www.researchgate.net/post/How-to-report-the-results-of-Intra-Class-Correlation-Coefficient-Results
+
+# ------ final version ------
+names(AMKOE)
+# force change columns to NAs when there is no response to AMK_OE and replace "y" and ""
+AMKOE$AMK_OE
+AMK_OE_uniq <- unique(AMKOE$AMK_OE)
+AMK_OE_uniq
+AMKOE$AMK_OE_D
+AMK_OE_D_uniq <- unique(AMKOE$AMK_OE_D)
+AMK_OE_D_uniq
+AMKOE$flashcards
+AMKOE$flashcards_D
+AMKOE <- AMKOE %>%
+    mutate(flashcards_LW = ifelse(AMK_OE == "", NA, ifelse(flashcards_LW == "y", 1, 0)),
+           practicetests_LW = ifelse(AMK_OE == "", NA, ifelse(practicetests_LW == "y", 1, 0)),
+           activeretrieve = ifelse(AMK_OE == "", NA, ifelse(activeretrieve == "y", 1, 0)),
+           assignments = ifelse(AMK_OE == "", NA, ifelse(assignments == "y", 1, 0)),
+           structure = ifelse(AMK_OE == "", NA, ifelse(structure == "y", 1, 0)),
+           prompts = ifelse(AMK_OE == "", NA, ifelse(prompts == "y", 1, 0)),
+           freerecall = ifelse(AMK_OE == "", NA, ifelse(freerecall == "y", 1, 0)),
+           selfexplain = ifelse(AMK_OE == "", NA, ifelse(selfexplain == "y", 1, 0)),
+           nonexperts = ifelse(AMK_OE == "", NA, ifelse(nonexperts == "y", 1, 0)),
+           experts = ifelse(AMK_OE == "", NA, ifelse(experts == "y", 1, 0)),
+           flashcards_D = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, ifelse(flashcards_D == "y", 1, 0)),
+           practicetests_D = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                       ifelse(practicetests_D == "y", 1, 0)),
+           activeretrieve_D = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                        ifelse(activeretrieve_D == "y", 1, 0)),
+           assignments_D = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                     ifelse(assignments_D == "y", 1, 0)),
+           structure_D = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                   ifelse(structure_D == "y", 1, 0)),
+           prompts_D = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                 ifelse(prompts_D == "y", 1, 0)),
+           freerecall_D = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                    ifelse(freerecall_D == "y", 1, 0)),
+           selfexplain_D = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                     ifelse(selfexplain_D == "y", 1, 0)),
+           nonexperts_D = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                    ifelse(nonexperts_D == "y", 1, 0)),
+           experts_D = ifelse(AMK_OE_D == "" | is.na(AMK_OE_D) == T, NA, 
+                                 ifelse(experts_D == "y", 1, 0)))
+AMKOE$flashcards_LW
+AMKOE$flashcards_D
+str(AMKOE) # data types also changed
+AMKOE <- AMKOE %>%
+    mutate(examples = (activeretrieve + assignments + structure + prompts + freerecall + selfexplain + nonexperts + experts),
+           examples_D = (activeretrieve_D + assignments_D + structure_D + prompts_D + freerecall_D  + selfexplain_D + nonexperts_D + experts_D),
+           typical = (flashcards_LW + practicetests_LW),
+           typical_D = (flashcards_D + practicetests_D))
+AMKOE$examples
+AMKOE$examples_D
+AMKOE$typical
+AMKOE$typical_D
+
+# ------ combine AMKOE with RP ------
+names(RP)
+RP <- dplyr::full_join(RP, AMKOE, by = "id")
+names(RP)
+
+examples_condition_nmsd <- RP %>%
+    group_by(Condition) %>%
+    summarize_at(vars(examples, examples_D), 
+                 funs(num = sum(!is.na(.)), mean, sd), na.rm = TRUE) %>%
+    mutate_if(is.numeric, round, digits = 2)
+examples_condition_nmsd
+# T1: 184, 1.72 (1.17) vs. 188, 1.14 (1.02)
+# T2: 134, 1.33 (1.04) vs. 138, 0.86 (0.92)
+
+typical_condition_nmsd <- RP %>%
+    group_by(Condition) %>%
+    summarize_at(vars(typical, typical_D), 
+                 funs(num = sum(!is.na(.)), mean, sd), na.rm = TRUE) %>%
+    mutate_if(is.numeric, round, digits = 2)
+typical_condition_nmsd
+# T1 1.66 (0.56) vs. 1.60 (0.60)
+# T2 1.64 (0.55) vs. 1.58 (0.59)
+
+# ------ correlation matrix ------
+cormatrix_I <- RP[c("TMK", "examples", "typical", "AMK", "cost", "use_generalRP", "use_typicalRP",  "use_nonRP", "impossBelief", "diffImport", "fixed")]
+chart.Correlation(cormatrix_I, histogram = FALSE)
+# font too small
+# get p values
+cormatrix_I_Hmisc <- rcorr(as.matrix(cormatrix_I))
+print(cormatrix_I_Hmisc$r, digits = 2)
+print(cormatrix_I_Hmisc$P, digits = 3)
+
+cormatrix_D <- RP[c("TMK_D", "examples_D", "typical_D", "AMK_D", "cost_D", "use_generalRP_D", "use_typicalRP_D", "use_nonRP_D")]
+chart.Correlation(cormatrix_D, histogram = FALSE)
+# font too small
+#chart.Correlation(RP[c("TMK_D", "use_frequency_D", "use_nonRP_D", "use_typicalRP_D", "use_generalRP_D")], histogram = FALSE)
+# get p values
+cormatrix_D_Hmisc <- rcorr(as.matrix(cormatrix_D))
+print(cormatrix_D_Hmisc$r, digits = 2)
+print(cormatrix_D_Hmisc$P, digits = 3)
+
+# ------ AMK immediate one-sided t-test ------
+# hypothesis 2 H0: experimental > control
+leveneTest(examples ~ Condition, data = RP) # p = 0.04
+
+AMKOE_I_ttest <- t.test(examples ~ Condition, alternative = "less", var.equal = TRUE, data = RP)
+AMKOE_I_ttest # raw result shows control vs. experiment; t(370) = 5.13, p < 0.001***
+
+AMKOE_I_cohend <- psych::cohen.d(x = RP$examples, group = RP$Condition)
+AMKOE_I_cohend # raw result shows experiment vs. control; 0.53
+
+# ------ AMK ANOVA ------
+AMKOE_D_cohend <- psych::cohen.d(x = RP$examples_D, group = RP$Condition)
+AMKOE_D_cohend # 0.48
+
+# hypothesis 2 H0: experimental > control
+# gather the columns AMK & AMK_D into long format.
+AMKOE_df <- RP %>%
+    dplyr::select(id, Condition, examples, examples_D) %>%
+    rename(T1 = examples,
+           T2 = examples_D) %>%
+    gather(key = "time", value = "AMKOE_score", T1, T2) %>%
+    convert_as_factor(id, Condition, time)
+head(AMKOE_df)
+# double check n, m, & sd
+AMKOE_df %>%
+    group_by(time, Condition) %>%
+    get_summary_stats(AMKOE_score, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "AMK: Examples (0-8)\n", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3.5) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3.5) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"),
+          axis.title=element_text(size = 10, face = "bold"),
+          axis.text=element_text(size = 10),
+          axis.text.x = element_text(color = "black"),
+          axis.text.y = element_text(color = "black"),
+          legend.title=element_text(size = 10, face = "bold"), 
+          legend.text=element_text(size = 10),
+          legend.position = "bottom")
+ggsave("AMKOE_ANOVA.png", height = 4.5, width = 5, dpi = 300)
+
+# mixed ANOVA
+AMKOE_ANOVA <- anova_test(data = AMKOE_df, dv = AMKOE_score, wid = id, between = Condition, within = time, type = 3, effect.size = "pes")
+get_anova_table(AMKOE_ANOVA)
+# main of Condition: F(1, 268) = 22.51, p < 0.001***, partial eta2 = 0.077
+# main of time: F(1, 268) = 50.62, p < 0.001***, partial eta2 = 0.159
+# main of interaction: F(1, 268) = 0.78, p = 0.38, partial eta2 = 0.003
+
+# ------ AMK typical immediate one-sided t-test ------
+leveneTest(typical ~ Condition, data = RP) # p = 0.35
+
+AMKOE_typ_I_ttest <- t.test(typical ~ Condition, var.equal = TRUE, data = RP)
+AMKOE_typ_I_ttest # raw result shows control vs. experiment; t(370) = 0.94, p < 0.35
+
+AMKOE_typ_I_cohend <- psych::cohen.d(x = RP$typical, group = RP$Condition)
+AMKOE_typ_I_cohend # raw result shows experiment vs. control; 0.10
+
+# ------ AMK typical ANOVA ------
+AMKOE_typ_D_cohend <- psych::cohen.d(x = RP$typical_D, group = RP$Condition)
+AMKOE_typ_D_cohend # 0.11
+
+# gather the columns AMK & AMK_D into long format.
+AMKOE_typ_df <- RP %>%
+    dplyr::select(id, Condition, typical, typical_D) %>%
+    rename(T1 = typical,
+           T2 = typical_D) %>%
+    gather(key = "time", value = "AMKOE_typ_score", T1, T2) %>%
+    convert_as_factor(id, Condition, time)
+head(AMKOE_typ_df)
+# double check n, m, & sd
+AMKOE_typ_df %>%
+    group_by(time, Condition) %>%
+    get_summary_stats(AMKOE_typ_score, type = "mean_sd") 
+
+# mixed ANOVA
+AMKOE_typ_ANOVA <- anova_test(data = AMKOE_typ_df, dv = AMKOE_typ_score, wid = id, between = Condition, within = time, type = 3, effect.size = "pes")
+get_anova_table(AMKOE_typ_ANOVA)
+# main of Condition: F(1, 268) = 0.85, p = 0.36, partial eta2 = 0.003
+# main of time: F(1, 268) = 0.73, p = 0.39, partial eta2 = 0.003
+# main of interaction: F(1, 268) = 0.78, p = 0.38, partial eta2 < 0.001
+
+# ------ 3 predictors full + covars ------
+fullcovar_3pred <- "
+    # measurement model
+    AMK_T1 =~ AMK_1 + AMK_2 + AMK_3
+    AMK_T2 =~ AMK_1_D + AMK_2_D + AMK_3_D
+    cost_T1 =~ time_1 + time_2 + time_3 + time_4 + effort_1 + effort_2 + effort_3 + effort_4 + effort_5
+    cost_T2 =~ time_1_D + time_2_D + time_3_D + time_4_D + effort_1_D + effort_2_D + effort_3_D + effort_4_D + effort_5_D
+    # regressions
+    examples ~ condition_dum
+    AMK_T1 ~ condition_dum
+    cost_T1 ~ condition_dum
+    use_generalRP ~ examples + AMK_T1 + cost_T1
+    examples_D ~ examples
+    AMK_T2 ~ AMK_T1
+    cost_T2 ~ cost_T1
+    use_generalRP_D ~ examples_D + AMK_T2 + cost_T2 + use_generalRP
+    # residual correlations
+    time_1 ~~ time_1_D
+    time_2 ~~ time_2_D
+    time_3 ~~ time_3_D
+    time_4 ~~ time_4_D
+    effort_1 ~~ effort_1_D
+    effort_2 ~~ effort_2_D
+    effort_3 ~~ effort_3_D
+    effort_4 ~~ effort_4_D
+    effort_5 ~~ effort_5_D
+    examples ~~ cost_T1
+    examples_D ~~ cost_T2
+    examples ~~ AMK_T1
+    examples_D ~~ AMK_T2
+    AMK_T1 ~~ cost_T1
+    AMK_T2 ~~ cost_T2
+    # variance
+    condition_dum ~~ condition_dum # has to write this otherwise won't print residual var of IVs
+"
+fullcovar_3pred_fit <- sem(fullcovar_3pred, data = RP)
+summary(fullcovar_3pred_fit, standardized = TRUE, fit.measures = TRUE)
+# examples_T1 ~ condition
+# use_T1 ~ AMKscale_T1
+# use_T2 ~ cost_2
+# examples_T1 ~ T2
+# AMKscale_T1 ~ T2
+# cost_T1 ~ T2
+# use_T1 ~ T2
+
+# ------ 3 predictors full ------
+full_3pred <- "
+    # measurement model
+    AMK_T1 =~ AMK_1 + AMK_2 + AMK_3
+    AMK_T2 =~ AMK_1_D + AMK_2_D + AMK_3_D
+    cost_T1 =~ time_1 + time_2 + time_3 + time_4 + effort_1 + effort_2 + effort_3 + effort_4 + effort_5
+    cost_T2 =~ time_1_D + time_2_D + time_3_D + time_4_D + effort_1_D + effort_2_D + effort_3_D + effort_4_D + effort_5_D
+    # regressions
+    examples ~ condition_dum
+    AMK_T1 ~ condition_dum
+    cost_T1 ~ condition_dum
+    use_generalRP ~ examples + AMK_T1 + cost_T1
+    examples_D ~ examples
+    AMK_T2 ~ AMK_T1
+    cost_T2 ~ cost_T1
+    use_generalRP_D ~ examples_D + AMK_T2 + cost_T2 + use_generalRP
+    # residual correlations
+    time_1 ~~ time_1_D
+    time_2 ~~ time_2_D
+    time_3 ~~ time_3_D
+    time_4 ~~ time_4_D
+    effort_1 ~~ effort_1_D
+    effort_2 ~~ effort_2_D
+    effort_3 ~~ effort_3_D
+    effort_4 ~~ effort_4_D
+    effort_5 ~~ effort_5_D
+    # variance
+    condition_dum ~~ condition_dum # has to write this otherwise won't print residual var of IVs
+"
+full_3pred_fit <- sem(full_3pred, data = RP)
+summary(full_3pred_fit, standardized = TRUE, fit.measures = TRUE)
+
+# ------ 3 predictors partial ------
+partial_3pred <- "
+    # measurement model
+    AMK_T1 =~ AMK_1 + AMK_2 + AMK_3
+    AMK_T2 =~ AMK_1_D + AMK_2_D + AMK_3_D
+    cost_T1 =~ time_1 + time_2 + time_3 + time_4 + effort_1 + effort_2 + effort_3 + effort_4 + effort_5
+    cost_T2 =~ time_1_D + time_2_D + time_3_D + time_4_D + effort_1_D + effort_2_D + effort_3_D + effort_4_D + effort_5_D
+    # regressions
+    examples ~ condition_dum
+    AMK_T1 ~ condition_dum
+    cost_T1 ~ condition_dum
+    use_generalRP ~ examples + AMK_T1 + cost_T1 + condition_dum
+    examples_D ~ examples
+    AMK_T2 ~ AMK_T1
+    cost_T2 ~ cost_T1
+    use_generalRP_D ~ examples_D + AMK_T2 + cost_T2 + use_generalRP
+    # residual correlations
+    time_1 ~~ time_1_D
+    time_2 ~~ time_2_D
+    time_3 ~~ time_3_D
+    time_4 ~~ time_4_D
+    effort_1 ~~ effort_1_D
+    effort_2 ~~ effort_2_D
+    effort_3 ~~ effort_3_D
+    effort_4 ~~ effort_4_D
+    effort_5 ~~ effort_5_D
+    # variance
+    condition_dum ~~ condition_dum # has to write this otherwise won't print residual var of IVs
+"
+partial_3pred_fit <- sem(partial_3pred, data = RP)
+summary(partial_3pred_fit, standardized = TRUE, fit.measures = TRUE)
+
+# ------ 3 predictors full vs. partial ------
+anova(partial_3pred_fit, full_3pred_fit)
+
+# ------ 3 predictors full + covar vs. full ------
+anova(fullcovar_3pred_fit, full_3pred_fit)
+
+
+```
+
+
+```{r AMK_OE binary exploratory}
+# ------ URM: AMKOE immediate independent ANOVA ------
+# IV: Condition, URM
+URM_AMKOE_wide <- RP %>%
+    dplyr::select(id, Condition, URM, methodsnum_LW, methodsnum_D_LW) %>%
+    filter(is.na(URM) == FALSE) %>%
+    convert_as_factor(id, Condition, URM)
+head(URM_AMKOE_wide)
+# double check n, m, & sd
+URM_AMKOE_wide %>%
+    group_by(Condition, URM) %>%
+    get_summary_stats(methodsnum_LW, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+URM_AMKOE_ANOVA <- URM_AMKOE_wide %>% 
+    anova_test(methodsnum_LW ~ Condition*URM, type = 3, effect.size = "pes")
+get_anova_table(URM_AMKOE_ANOVA)
+# main of Condition F(1, 367) = 23.38, P < 0.001, pes = 0.060
+
+# ------ URM: AMKOE mixed ANOVA ------
+# IV: Condition, URM, time
+# gather the columns methodsnum_LW & methodsnum_D_LW into long format
+URM_AMKOE_long <- URM_AMKOE_wide %>%
+    rename(T1 = methodsnum_LW,
+           T2 = methodsnum_D_LW) %>%
+    gather(key = "time", value = "AMK_OE", T1, T2) %>%
+    convert_as_factor(time)
+head(URM_AMKOE_long)
+# double check n, m, & sd
+URM_AMKOE_long %>%
+    group_by(Condition, URM, time) %>%
+    get_summary_stats(AMK_OE, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    facet_wrap(~ URM, ncol = 2)+ 
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "Applied metacognitive knowledge (OE)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+#ggsave("URM_AMKOE_ANOVA.png", height = 4, width = 8, dpi = 300)
+
+# mixed (2 between 1 within) ANOVA
+URM_AMKOE_mixANOVA <- anova_test(data = URM_AMKOE_long, dv = AMK_OE, wid = id, 
+                               between = c(Condition, URM), within = time, type = 3, effect.size = "pes")
+get_anova_table(URM_AMKOE_mixANOVA)
+# condition: F(1, 265) = 15.95, p < 0.001, pes = 0.057
+# time: F(1, 265) = 40.56, p < 0.001, pes = 0.133
+
+# ------ firstGen: AMKOE immediate independent ANOVA ------
+# IV: Condition, firstGen
+firstGen_AMKOE_wide <- RP %>%
+    dplyr::select(id, Condition, firstGen, methodsnum_LW, methodsnum_D_LW) %>%
+    filter(is.na(firstGen) == FALSE) %>%
+    convert_as_factor(id, Condition, firstGen)
+head(firstGen_AMKOE_wide)
+# double check n, m, & sd
+firstGen_AMKOE_wide %>%
+    group_by(Condition, firstGen) %>%
+    get_summary_stats(methodsnum_LW, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+firstGen_AMKOE_ANOVA <- firstGen_AMKOE_wide %>% 
+    anova_test(methodsnum_LW ~ Condition*firstGen, type = 3, effect.size = "pes")
+get_anova_table(firstGen_AMKOE_ANOVA)
+# main of Condition F(1, 365) = 10.14, P = 0.002, pes = 0.027
+
+# ------ firstGen: AMKOE mixed ANOVA ------
+# IV: Condition, firstGen, time
+# gather the columns methodsnum_LW & methodsnum_D_LW into long format
+firstGen_AMKOE_long <- firstGen_AMKOE_wide %>%
+    rename(T1 = methodsnum_LW,
+           T2 = methodsnum_D_LW) %>%
+    gather(key = "time", value = "AMK_OE", T1, T2) %>%
+    convert_as_factor(time)
+head(firstGen_AMKOE_long)
+# double check n, m, & sd
+firstGen_AMKOE_long %>%
+    group_by(Condition, firstGen, time) %>%
+    get_summary_stats(AMK_OE, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    facet_wrap(~ firstGen, ncol = 2)+ 
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "Applied metacognitive knowledge (OE)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+#ggsave("firstGen_AMKOE_ANOVA.png", height = 4, width = 8, dpi = 300)
+
+# mixed (2 between 1 within) ANOVA
+firstGen_AMKOE_mixANOVA <- anova_test(data = firstGen_AMKOE_long, dv = AMK_OE, wid = id, 
+                               between = c(Condition, firstGen), within = time, type = 3, effect.size = "pes")
+get_anova_table(firstGen_AMKOE_mixANOVA)
+# condition: F(1, 265) = 17.41, p < 0.001, pes = 0.062
+# time: F(1, 265) = 34.47, p < 0.001, pes = 0.115
+
+# ------ finishvids: AMKOE immediate independent ANOVA ------
+# IV: Condition, finishvids
+finishvids_AMKOE_wide <- RP %>%
+    dplyr::select(id, Condition, finishvids, methodsnum_LW, methodsnum_D_LW) %>%
+    filter(is.na(finishvids) == FALSE) %>%
+    convert_as_factor(id, Condition, finishvids)
+head(finishvids_AMKOE_wide)
+# double check n, m, & sd
+finishvids_AMKOE_wide %>%
+    group_by(Condition, finishvids) %>%
+    get_summary_stats(methodsnum_LW, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+finishvids_AMKOE_ANOVA <- finishvids_AMKOE_wide %>% 
+    anova_test(methodsnum_LW ~ Condition*finishvids, type = 3, effect.size = "pes")
+get_anova_table(finishvids_AMKOE_ANOVA)
+# main of Condition F(1, 368) = 18.59, P < 0.001, pes = 0.048
+
+# ------ finishvids: AMKOE mixed ANOVA ------
+# IV: Condition, finishvids, time
+# gather the columns methodsnum_LW & methodsnum_D_LW into long format
+finishvids_AMKOE_long <- finishvids_AMKOE_wide %>%
+    rename(T1 = methodsnum_LW,
+           T2 = methodsnum_D_LW) %>%
+    gather(key = "time", value = "AMK_OE", T1, T2) %>%
+    convert_as_factor(time)
+head(finishvids_AMKOE_long)
+# double check n, m, & sd
+finishvids_AMKOE_long %>%
+    group_by(Condition, finishvids, time) %>%
+    get_summary_stats(AMK_OE, type = "mean_se") %>%
+    mutate_if(is.numeric, round, digits = 2) %>%
+    ggplot(aes(x = time, y = mean, group = Condition, color = Condition)) +
+    geom_line(stat = "identity") +
+    facet_wrap(~ finishvids, ncol = 2)+ 
+    geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.1) + 
+    scale_color_manual(values = c("#9cadb7","#005f86")) +
+    labs(x = "Time", y = "Applied metacognitive knowledge (OE)", group = "Condition") +
+    geom_text(aes(label=mean), hjust = -0.2, vjust = -0.8, color="black", size = 3) +
+    geom_text(aes(label=se), hjust = -0.2, vjust = 0.8, color="black", size = 3) +
+    theme_apa()
+#ggsave("finishvids_AMKOE_ANOVA.png", height = 4, width = 8, dpi = 300)
+
+# mixed (2 between 1 within) ANOVA
+finishvids_AMKOE_mixANOVA <- anova_test(data = finishvids_AMKOE_long, dv = AMK_OE, wid = id, 
+                               between = c(Condition, finishvids), within = time, type = 3, effect.size = "pes")
+get_anova_table(finishvids_AMKOE_mixANOVA)
+# condition: F(1, 266) = 20.21, p < 0.001, pes = 0.071
+# time: F(1, 266) = 47.45, p < 0.001, pes = 0.151
+
+# ------ delayed: AMKOE immediate independent ANOVA ------
+# IV: Condition, delayed
+delayed_AMKOE_wide <- RP %>%
+    dplyr::select(id, Condition, delayed, examples, examples_D) %>%
+    filter(is.na(delayed) == FALSE) %>%
+    convert_as_factor(id, Condition, delayed)
+head(delayed_AMKOE_wide)
+# double check n, m, & sd
+delayed_AMKOE_wide %>%
+    group_by(delayed) %>%
+    get_summary_stats(Condition, examples, type = "mean_sd") %>%
+    mutate_if(is.numeric, round, digits = 2)
+
+# 2-way ANOVA
+delayed_AMKOE_ANOVA <- delayed_AMKOE_wide %>% 
+    anova_test(examples ~ Condition*delayed, type = 3, effect.size = "pes")
+get_anova_table(delayed_AMKOE_ANOVA)
+# main of Condition F(1, 368) = 7.80, P = 0.005, pes = 0.021
+# main of delayed F(1, 368) = 7.47, P = 0.007, pes = 0.020
+```
+
+
